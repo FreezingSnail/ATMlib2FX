@@ -1,32 +1,44 @@
 #ifndef _ATMLIB_H_
 #define _ATMLIB_H_
 
+#include <ArduboyFX.h>
+
 extern "C" {
 #include "atm_synth.h"
 }
 
 class ATMsynth {
 
-private:
-	bool setup_done = false;
+  private:
+    bool setup_done = false;
+    struct buffer {
+        uint8_t synthBuffer[ATM_BUFFER_LENGTH];
+    } channelBuffers[4];
 
-public:
-	ATMsynth() {};
+    uint8_t writeIndex;
+    uint24_t channelPointer[4];
 
-	void setup(void);
+  public:
+    ATMsynth(){};
 
-	// Load and play specified song
-	void play(const uint8_t *song);
+    void setup(void);
 
-	// Play or Pause playback
-	void playPause();
+    // Load and play specified song
+    void play(const uint8_t *song);
 
-	// Stop playback (unloads song)
-	void stop();
+    // Play or Pause playback
+    void playPause();
 
-	void muteChannel(uint8_t ch);
+    // Stop playback (unloads song)
+    void stop();
 
-	void unMuteChannel(uint8_t ch);
+    void muteChannel(uint8_t ch);
+
+    void unMuteChannel(uint8_t ch);
+
+    void init(uint24_t songAddr, uint16_t songLength);
+
+    void update();
 };
 
 #endif

@@ -25,6 +25,7 @@
 #define ATM_HAS_FX_SLIDE (1)
 #define ATM_HAS_FX_LFO (1)
 #define ATM_HAS_FX_GLISSANDO (1)
+// TODO: Loops prob removed
 #define ATM_HAS_FX_LOOP (1)
 #endif
 
@@ -34,17 +35,22 @@
 #define ATM_SCORE_FMT_FULL_MONO (0x2)
 #define ATM_SCORE_FMT_FULL (0x3)
 
+#ifndef ATM_BUFFER_LENGTH
+#define ATM_BUFFER_LENGTH 12
+#endif   // !ATM_BUFFER_LENGTH
+
 struct atm_synth_state;
 struct atm_sfx_state;
 struct atm_channel_state;
 struct atm_synth_ext;
 struct atm_cmd_data;
 
-typedef void (*atm_synth_ext_callback)(const uint8_t channel_count, struct atm_synth_state *synth_state, struct atm_channel_state *ch, struct atm_synth_ext *synth_ext);
+typedef void (*atm_synth_ext_callback)(const uint8_t channel_count, struct atm_synth_state *synth_state, struct atm_channel_state *ch,
+                                       struct atm_synth_ext *synth_ext);
 
 struct atm_synth_ext {
-	atm_synth_ext_callback cb;
-	void *priv;
+    atm_synth_ext_callback cb;
+    void *priv;
 };
 
 extern struct atm_synth_state atmlib_state;
@@ -62,7 +68,13 @@ void atm_synth_grab_channel(const uint8_t channel_index, struct osc_params *save
 void atm_synth_release_channel(const uint8_t channel_index);
 
 void atm_synth_play_ext(const struct atm_synth_ext *synth_ext);
-void ext_synth_command(const uint8_t ch_index, const struct atm_cmd_data *cmd, struct atm_synth_state *score_state, struct atm_channel_state *ch);
+void ext_synth_command(const uint8_t ch_index, const struct atm_cmd_data *cmd, struct atm_synth_state *score_state,
+                       struct atm_channel_state *ch);
+
+// FX port required functions
+uint8_t readerPos();
+void link_channels(uint8_t *channelPointers[4]);
+uint8_t incrementWriteIndex(uint8_t i);
 
 /* Play score as a sound effect on channel_index
 
@@ -74,7 +86,7 @@ being played back, the active sound effect will stop and the new one will replac
 
 Sound effect scores must be in ATM_SCORE_FMT_MINIMAL_MONO or ATM_SCORE_FMT_FULL_MONO format.
 */
-void atm_synth_play_sfx_track(const uint8_t channel_index, const uint8_t *score,  struct atm_sfx_state *sfx_state);
+void atm_synth_play_sfx_track(const uint8_t channel_index, const uint8_t *score, struct atm_sfx_state *sfx_state);
 
 /* Stop a previously started sound effect score */
 void atm_synth_stop_sfx_track(struct atm_sfx_state *sfx_state);
@@ -93,93 +105,96 @@ get in touch with the maintainers.
 */
 
 struct atm_synth_state {
-	const uint8_t *score_start;
-	uint8_t tick_rate;
-	uint8_t channel_active_mute; //0b11110000;
-	//                               ||||||||
-	//                               |||||||└->  0  channel 0 is muted (0 = false / 1 = true)
-	//                               ||||||└-->  1  channel 1 is muted (0 = false / 1 = true)
-	//                               |||||└--->  2  channel 2 is muted (0 = false / 1 = true)
-	//                               ||||└---->  3  channel 3 is muted (0 = false / 1 = true)
-	//                               |||└----->  4  channel 0 is Active (0 = false / 1 = true)
-	//                               ||└------>  5  channel 1 is Active (0 = false / 1 = true)
-	//                               |└------->  6  channel 2 is Active (0 = false / 1 = true)
-	//                               └-------->  7  channel 3 is Active (0 = false / 1 = true)
+    const uint8_t *score_start;
+    uint8_t tick_rate;
+    uint8_t channel_active_mute;   // 0b11110000;
+    //                               ||||||||
+    //                               |||||||└->  0  channel 0 is muted (0 = false / 1 = true)
+    //                               ||||||└-->  1  channel 1 is muted (0 = false / 1 = true)
+    //                               |||||└--->  2  channel 2 is muted (0 = false / 1 = true)
+    //                               ||||└---->  3  channel 3 is muted (0 = false / 1 = true)
+    //                               |||└----->  4  channel 0 is Active (0 = false / 1 = true)
+    //                               ||└------>  5  channel 1 is Active (0 = false / 1 = true)
+    //                               |└------->  6  channel 2 is Active (0 = false / 1 = true)
+    //                               └-------->  7  channel 3 is Active (0 = false / 1 = true)
+    // FX buffer and heads
+    uint8_t *synthBuffer[4];
+    uint8_t readIndex;
 };
 
 #if ATM_HAS_FX_SLIDE
 
 struct atm_slide_params {
-	int8_t slide_amount;
-	uint8_t slide_config;
-	uint8_t slide_count;
+    int8_t slide_amount;
+    uint8_t slide_config;
+    uint8_t slide_count;
 };
 
 #endif
 
 struct atm_pattern_state {
-	const uint8_t *next_cmd_ptr;
-	uint8_t pattern_index;
-	uint8_t repetitions_counter;
+    const uint8_t *next_cmd_ptr;
+    uint8_t pattern_index;
+    uint8_t repetitions_counter;
 };
 
 struct atm_channel_state {
-	uint8_t note;
-	uint8_t vol;
-	uint8_t mod;
-	uint16_t delay;
-	// Transposition FX
-	int8_t trans_config;
+    uint8_t note;
+    uint8_t vol;
+    uint8_t mod;
+    uint16_t delay;
+    // Transposition FX
+    int8_t trans_config;
 
-	// Nesting
-	struct atm_pattern_state pstack[ATM_PATTERN_STACK_DEPTH];
-	uint8_t pstack_index;
+    // Nesting
+    struct atm_pattern_state pstack[ATM_PATTERN_STACK_DEPTH];
+    uint8_t pstack_index;
 #if ATM_HAS_FX_LOOP
-	uint8_t loop_pattern_index;
+    uint8_t loop_pattern_index;
 #endif
 
-	struct osc_params *dst_osc_params;
+    struct osc_params *dst_osc_params;
 
 #if ATM_HAS_FX_SLIDE
-	// Volume & Frequency slide FX
-	struct atm_slide_params vf_slide;
+    // Volume & Frequency slide FX
+    struct atm_slide_params vf_slide;
 #endif
 
 #if ATM_HAS_FX_NOTE_RETRIG
-	// Arpeggio or Note Cut FX
-	uint8_t arpNotes;       // notes: base, base+[7:4], base+[7:4]+[3:0], if FF => note cut ON
-	uint8_t arpTiming;      // [7] = reserved, [6] = not third note ,[5] = retrigger, [4:0] = tick count
-	uint8_t arpCount;
+    // Arpeggio or Note Cut FX
+    uint8_t arpNotes;    // notes: base, base+[7:4], base+[7:4]+[3:0], if FF => note cut ON
+    uint8_t arpTiming;   // [7] = reserved, [6] = not third note ,[5] = retrigger, [4:0] = tick count
+    uint8_t arpCount;
 #endif
 
 #if ATM_HAS_FX_NOISE_RETRIG
-	// Retrig FX
-	uint8_t reConfig;       // [7:2] = , [1:0] = speed // used for the noise channel
-	uint8_t reCount;
+    // Retrig FX
+    uint8_t reConfig;   // [7:2] = , [1:0] = speed // used for the noise channel
+    uint8_t reCount;
 #endif
 
 #if ATM_HAS_FX_LFO
-	// Tremolo or Vibrato FX
-	uint8_t treviDepth;
-	uint8_t treviConfig;
-	uint8_t treviCount;
+    // Tremolo or Vibrato FX
+    uint8_t treviDepth;
+    uint8_t treviConfig;
+    uint8_t treviCount;
 #endif
 
 #if ATM_HAS_FX_GLISSANDO
-	// Glissando FX
-	int8_t glisConfig;
-	uint8_t glisCount;
+    // Glissando FX
+    int8_t glisConfig;
+    uint8_t glisCount;
 #endif
 };
 
 struct atm_sfx_state {
-	uint8_t ch_index;
-	struct atm_synth_state track_info;
-	struct atm_channel_state channel_state;
-	struct osc_params osc_params;
+    uint8_t ch_index;
+    struct atm_synth_state track_info;
+    struct atm_channel_state channel_state;
+    struct osc_params osc_params;
 };
 
 struct atm_cmd_data {
-	uint8_t id;
-	uint8_t params[3];
+    uint8_t id;
+    uint8_t params[3];
 };
