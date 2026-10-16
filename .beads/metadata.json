@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "ATMlib2FX",
+  "project_id": "edaa8989-b366-4d68-a369-d14f9ec6fd23"
+}
