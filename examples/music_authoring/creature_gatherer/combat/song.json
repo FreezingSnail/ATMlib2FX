@@ -1,0 +1,325 @@
+{
+  "format": "atmlib-score",
+  "version": 1,
+  "id": "cg_combat_v1",
+  "clock": {
+    "tick_rate": 100,
+    "ticks_per_beat": 34,
+    "beats_per_bar": 4
+  },
+  "instruments": {
+    "lead": {
+      "voice": "pulse",
+      "volume": 96,
+      "duty": 96
+    },
+    "harm": {
+      "voice": "pulse",
+      "volume": 54,
+      "duty": 64
+    },
+    "bass": {
+      "voice": "pulse",
+      "volume": 78,
+      "duty": 208
+    },
+    "perc": {
+      "voice": "noise",
+      "volume": 64
+    }
+  },
+  "patterns": {
+    "C1": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "D5", "duration": 16, "instrument": "lead"},
+        {"at": 34, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 68, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 102, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 136, "note": "D5", "duration": 16, "instrument": "lead"},
+        {"at": 170, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 204, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 238, "note": "A5", "duration": 16, "instrument": "lead"}
+      ]
+    },
+    "C2": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "A#5", "duration": 16, "instrument": "lead"},
+        {"at": 34, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 68, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 102, "note": "D5", "duration": 16, "instrument": "lead"},
+        {"at": 136, "note": "C#5", "duration": 16, "instrument": "lead"},
+        {"at": 170, "note": "E5", "duration": 16, "instrument": "lead"},
+        {"at": 204, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 238, "note": "G5", "duration": 16, "instrument": "lead"}
+      ]
+    },
+    "C3": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 34, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 68, "note": "D5", "duration": 16, "instrument": "lead"},
+        {"at": 102, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 136, "note": "A#5", "duration": 16, "instrument": "lead"},
+        {"at": 170, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 204, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 238, "note": "A#5", "duration": 16, "instrument": "lead"}
+      ]
+    },
+    "C4": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "C6", "duration": 16, "instrument": "lead"},
+        {"at": 34, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 68, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 102, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 136, "note": "E5", "duration": 16, "instrument": "lead"},
+        {"at": 170, "note": "C#5", "duration": 16, "instrument": "lead"},
+        {"at": 204, "note": "A4", "duration": 16, "instrument": "lead"},
+        {"at": 238, "note": "E5", "duration": 16, "instrument": "lead"}
+      ]
+    },
+    "C5": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "D6", "duration": 16, "instrument": "lead"},
+        {"at": 34, "note": "C6", "duration": 16, "instrument": "lead"},
+        {"at": 68, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 102, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 136, "note": "E5", "duration": 16, "instrument": "lead"},
+        {"at": 170, "note": "G5", "duration": 16, "instrument": "lead"},
+        {"at": 204, "note": "C6", "duration": 16, "instrument": "lead"},
+        {"at": 238, "note": "G5", "duration": 16, "instrument": "lead"}
+      ]
+    },
+    "C6": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "A#5", "duration": 16, "instrument": "lead"},
+        {"at": 34, "note": "D6", "duration": 16, "instrument": "lead"},
+        {"at": 68, "note": "D6", "duration": 16, "instrument": "lead"},
+        {"at": 102, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 136, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 170, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 204, "note": "G5", "duration": 16, "instrument": "lead"},
+        {"at": 238, "note": "E5", "duration": 16, "instrument": "lead"}
+      ]
+    },
+    "C7": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "D5", "duration": 16, "instrument": "lead"},
+        {"at": 34, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 68, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 102, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 136, "note": "A#5", "duration": 16, "instrument": "lead"},
+        {"at": 170, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 204, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 238, "note": "D5", "duration": 16, "instrument": "lead"}
+      ]
+    },
+    "C8": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "A5", "duration": 16, "instrument": "lead"},
+        {"at": 34, "note": "G5", "duration": 16, "instrument": "lead"},
+        {"at": 68, "note": "E5", "duration": 16, "instrument": "lead"},
+        {"at": 102, "note": "C#5", "duration": 16, "instrument": "lead"},
+        {"at": 136, "note": "D5", "duration": 33, "instrument": "lead"},
+        {"at": 204, "note": "F5", "duration": 16, "instrument": "lead"},
+        {"at": 238, "note": "A5", "duration": 16, "instrument": "lead"}
+      ]
+    },
+    "H1": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "D4", "duration": 14, "instrument": "harm"},
+        {"at": 68, "note": "A4", "duration": 14, "instrument": "harm"},
+        {"at": 136, "note": "D4", "duration": 14, "instrument": "harm"},
+        {"at": 204, "note": "A4", "duration": 14, "instrument": "harm"}
+      ]
+    },
+    "H2": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "A#3", "duration": 14, "instrument": "harm"},
+        {"at": 68, "note": "F4", "duration": 14, "instrument": "harm"},
+        {"at": 136, "note": "A3", "duration": 14, "instrument": "harm"},
+        {"at": 204, "note": "E4", "duration": 14, "instrument": "harm"}
+      ]
+    },
+    "H3": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "F4", "duration": 14, "instrument": "harm"},
+        {"at": 68, "note": "C5", "duration": 14, "instrument": "harm"},
+        {"at": 136, "note": "A3", "duration": 14, "instrument": "harm"},
+        {"at": 204, "note": "E4", "duration": 14, "instrument": "harm"}
+      ]
+    },
+    "H4": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "D4", "duration": 14, "instrument": "harm"},
+        {"at": 68, "note": "A4", "duration": 14, "instrument": "harm"},
+        {"at": 136, "note": "C4", "duration": 14, "instrument": "harm"},
+        {"at": 204, "note": "G4", "duration": 14, "instrument": "harm"}
+      ]
+    },
+    "H7": {
+      "ticks": 272,
+      "events": [
+        {"at": 0, "note": "A3", "duration": 14, "instrument": "harm"},
+        {"at": 68, "note": "E4", "duration": 14, "instrument": "harm"},
+        {"at": 136, "note": "D4", "duration": 14, "instrument": "harm"},
+        {"at": 204, "note": "A4", "duration": 14, "instrument": "harm"}
+      ]
+    },
+    "d": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "D2", "duration": 30, "instrument": "bass"},
+        {"at": 34, "note": "A2", "duration": 30, "instrument": "bass"},
+        {"at": 68, "note": "D2", "duration": 30, "instrument": "bass"},
+        {"at": 102, "note": "A2", "duration": 30, "instrument": "bass"}
+      ]
+    },
+    "bb": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "A#2", "duration": 30, "instrument": "bass"},
+        {"at": 34, "note": "F2", "duration": 30, "instrument": "bass"},
+        {"at": 68, "note": "A#2", "duration": 30, "instrument": "bass"},
+        {"at": 102, "note": "F2", "duration": 30, "instrument": "bass"}
+      ]
+    },
+    "a": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "A2", "duration": 30, "instrument": "bass"},
+        {"at": 34, "note": "E3", "duration": 30, "instrument": "bass"},
+        {"at": 68, "note": "A2", "duration": 30, "instrument": "bass"},
+        {"at": 102, "note": "E3", "duration": 30, "instrument": "bass"}
+      ]
+    },
+    "f": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "F2", "duration": 30, "instrument": "bass"},
+        {"at": 34, "note": "C3", "duration": 30, "instrument": "bass"},
+        {"at": 68, "note": "F2", "duration": 30, "instrument": "bass"},
+        {"at": 102, "note": "C3", "duration": 30, "instrument": "bass"}
+      ]
+    },
+    "c": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 30, "instrument": "bass"},
+        {"at": 34, "note": "G3", "duration": 30, "instrument": "bass"},
+        {"at": 68, "note": "C3", "duration": 30, "instrument": "bass"},
+        {"at": 102, "note": "G3", "duration": 30, "instrument": "bass"}
+      ]
+    },
+    "dmCad": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "D2", "duration": 60, "instrument": "bass"},
+        {"at": 68, "note": "D2", "duration": 65, "instrument": "bass"}
+      ]
+    },
+    "beatD": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 7, "instrument": "perc"},
+        {"at": 34, "note": "C5", "duration": 7, "instrument": "perc"},
+        {"at": 68, "note": "C3", "duration": 7, "instrument": "perc"},
+        {"at": 102, "note": "C5", "duration": 7, "instrument": "perc"}
+      ]
+    },
+    "beatD2": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 7, "instrument": "perc"},
+        {"at": 16, "note": "C3", "duration": 6, "instrument": "perc"},
+        {"at": 34, "note": "C5", "duration": 7, "instrument": "perc"},
+        {"at": 68, "note": "C3", "duration": 7, "instrument": "perc"},
+        {"at": 84, "note": "C5", "duration": 6, "instrument": "perc"},
+        {"at": 102, "note": "C5", "duration": 7, "instrument": "perc"}
+      ]
+    },
+    "fillC": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "C5", "duration": 7, "instrument": "perc"},
+        {"at": 16, "note": "C5", "duration": 7, "instrument": "perc"},
+        {"at": 34, "note": "C3", "duration": 7, "instrument": "perc"},
+        {"at": 68, "note": "C5", "duration": 7, "instrument": "perc"},
+        {"at": 84, "note": "C5", "duration": 7, "instrument": "perc"},
+        {"at": 102, "note": "C5", "duration": 7, "instrument": "perc"}
+      ]
+    },
+    "fillC2": {
+      "ticks": 136,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 5, "instrument": "perc"},
+        {"at": 16, "note": "C3", "duration": 6, "instrument": "perc"},
+        {"at": 34, "note": "C3", "duration": 5, "instrument": "perc"},
+        {"at": 68, "note": "C5", "duration": 5, "instrument": "perc"},
+        {"at": 84, "note": "C5", "duration": 6, "instrument": "perc"},
+        {"at": 102, "note": "C5", "duration": 5, "instrument": "perc"}
+      ]
+    }
+  },
+  "tracks": {
+    "pulse0": [
+      {"pattern": "C1", "repeat": 1},
+      {"pattern": "C2", "repeat": 1},
+      {"pattern": "C3", "repeat": 1},
+      {"pattern": "C4", "repeat": 1},
+      {"pattern": "C5", "repeat": 1},
+      {"pattern": "C6", "repeat": 1},
+      {"pattern": "C7", "repeat": 1},
+      {"pattern": "C8", "repeat": 1}
+    ],
+    "pulse1": [
+      {"pattern": "H1", "repeat": 1},
+      {"pattern": "H2", "repeat": 1},
+      {"pattern": "H1", "repeat": 1},
+      {"pattern": "H3", "repeat": 1},
+      {"pattern": "H4", "repeat": 1},
+      {"pattern": "H2", "repeat": 1},
+      {"pattern": "H1", "repeat": 1},
+      {"pattern": "H7", "repeat": 1}
+    ],
+    "pulse2": [
+      {"pattern": "d", "repeat": 1},
+      {"pattern": "d", "repeat": 1},
+      {"pattern": "bb", "repeat": 1},
+      {"pattern": "a", "repeat": 1},
+      {"pattern": "d", "repeat": 1},
+      {"pattern": "bb", "repeat": 1},
+      {"pattern": "f", "repeat": 1},
+      {"pattern": "a", "repeat": 1},
+      {"pattern": "d", "repeat": 1},
+      {"pattern": "c", "repeat": 1},
+      {"pattern": "bb", "repeat": 1},
+      {"pattern": "a", "repeat": 1},
+      {"pattern": "d", "repeat": 1},
+      {"pattern": "bb", "repeat": 1},
+      {"pattern": "a", "repeat": 1},
+      {"pattern": "dmCad", "repeat": 1}
+    ],
+    "noise": [
+      {"pattern": "beatD", "repeat": 7},
+      {"pattern": "fillC", "repeat": 1},
+      {"pattern": "beatD2", "repeat": 3},
+      {"pattern": "fillC", "repeat": 1},
+      {"pattern": "beatD2", "repeat": 2},
+      {"pattern": "fillC2", "repeat": 1},
+      {"pattern": "beatD", "repeat": 1}
+    ]
+  },
+  "loop": true
+}

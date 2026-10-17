@@ -1,0 +1,228 @@
+{
+  "format": "atmlib-score",
+  "version": 1,
+  "id": "cg_exploration_v1",
+  "clock": {
+    "tick_rate": 50,
+    "ticks_per_beat": 36,
+    "beats_per_bar": 4
+  },
+  "instruments": {
+    "lead": {
+      "voice": "pulse",
+      "volume": 72,
+      "duty": 32
+    },
+    "harm": {
+      "voice": "pulse",
+      "volume": 44,
+      "duty": 32
+    },
+    "bass": {
+      "voice": "pulse",
+      "volume": 66,
+      "duty": 176
+    },
+    "perc": {
+      "voice": "noise",
+      "volume": 42
+    }
+  },
+  "patterns": {
+    "E1": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "A3", "duration": 63, "instrument": "lead"},
+        {"at": 72, "note": "C4", "duration": 43, "instrument": "lead"},
+        {"at": 144, "note": "E4", "duration": 63, "instrument": "lead"},
+        {"at": 216, "note": "F4", "duration": 43, "instrument": "lead"}
+      ]
+    },
+    "E2": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "F4", "duration": 63, "instrument": "lead"},
+        {"at": 72, "note": "A4", "duration": 43, "instrument": "lead"},
+        {"at": 144, "note": "D4", "duration": 63, "instrument": "lead"},
+        {"at": 216, "note": "F4", "duration": 43, "instrument": "lead"}
+      ]
+    },
+    "E3": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "E4", "duration": 86, "instrument": "lead"},
+        {"at": 144, "note": "A4", "duration": 63, "instrument": "lead"},
+        {"at": 216, "note": "G4", "duration": 43, "instrument": "lead"}
+      ]
+    },
+    "E4": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "F4", "duration": 72, "instrument": "lead"},
+        {"at": 108, "note": "C5", "duration": 29, "instrument": "lead"},
+        {"at": 144, "note": "D4", "duration": 72, "instrument": "lead"},
+        {"at": 216, "note": "A3", "duration": 49, "instrument": "lead"}
+      ]
+    },
+    "E5": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "A4", "duration": 72, "instrument": "lead"},
+        {"at": 108, "note": "C5", "duration": 29, "instrument": "lead"},
+        {"at": 144, "note": "B3", "duration": 72, "instrument": "lead"},
+        {"at": 216, "note": "E4", "duration": 43, "instrument": "lead"}
+      ]
+    },
+    "E6": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "F4", "duration": 63, "instrument": "lead"},
+        {"at": 108, "note": "C4", "duration": 29, "instrument": "lead"},
+        {"at": 144, "note": "A3", "duration": 63, "instrument": "lead"},
+        {"at": 230, "note": "E4", "duration": 44, "instrument": "lead"}
+      ]
+    },
+    "EA": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "A3", "duration": 29, "instrument": "harm"},
+        {"at": 72, "note": "E4", "duration": 29, "instrument": "harm"},
+        {"at": 144, "note": "A3", "duration": 29, "instrument": "harm"},
+        {"at": 216, "note": "A3", "duration": 29, "instrument": "harm"}
+      ]
+    },
+    "EB": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "F3", "duration": 29, "instrument": "harm"},
+        {"at": 72, "note": "C4", "duration": 29, "instrument": "harm"},
+        {"at": 144, "note": "D4", "duration": 29, "instrument": "harm"},
+        {"at": 216, "note": "A3", "duration": 29, "instrument": "harm"}
+      ]
+    },
+    "EC": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "A3", "duration": 29, "instrument": "harm"},
+        {"at": 72, "note": "E4", "duration": 29, "instrument": "harm"},
+        {"at": 144, "note": "C4", "duration": 29, "instrument": "harm"},
+        {"at": 216, "note": "G4", "duration": 29, "instrument": "harm"}
+      ]
+    },
+    "EE": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "A3", "duration": 29, "instrument": "harm"},
+        {"at": 72, "note": "E4", "duration": 29, "instrument": "harm"},
+        {"at": 144, "note": "E3", "duration": 29, "instrument": "harm"},
+        {"at": 216, "note": "B3", "duration": 29, "instrument": "harm"}
+      ]
+    },
+    "EF": {
+      "ticks": 288,
+      "events": [
+        {"at": 0, "note": "F3", "duration": 29, "instrument": "harm"},
+        {"at": 72, "note": "C4", "duration": 29, "instrument": "harm"},
+        {"at": 144, "note": "A3", "duration": 29, "instrument": "harm"},
+        {"at": 216, "note": "E4", "duration": 29, "instrument": "harm"}
+      ]
+    },
+    "bA": {
+      "ticks": 144,
+      "events": [
+        {"at": 0, "note": "A2", "duration": 115, "instrument": "bass"}
+      ]
+    },
+    "bF": {
+      "ticks": 144,
+      "events": [
+        {"at": 0, "note": "F2", "duration": 115, "instrument": "bass"}
+      ]
+    },
+    "bD": {
+      "ticks": 144,
+      "events": [
+        {"at": 0, "note": "D2", "duration": 115, "instrument": "bass"}
+      ]
+    },
+    "bC": {
+      "ticks": 144,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 115, "instrument": "bass"}
+      ]
+    },
+    "bE": {
+      "ticks": 144,
+      "events": [
+        {"at": 0, "note": "E2", "duration": 115, "instrument": "bass"}
+      ]
+    },
+    "drip": {
+      "ticks": 144,
+      "events": [
+        {"at": 72, "note": "C5", "duration": 6, "instrument": "perc"}
+      ]
+    },
+    "drip2": {
+      "ticks": 144,
+      "events": [
+        {"at": 36, "note": "C5", "duration": 6, "instrument": "perc"},
+        {"at": 108, "note": "C3", "duration": 6, "instrument": "perc"}
+      ]
+    },
+    "drip3": {
+      "ticks": 144,
+      "events": [
+        {"at": 72, "note": "C3", "duration": 6, "instrument": "perc"},
+        {"at": 89, "note": "C5", "duration": 6, "instrument": "perc"}
+      ]
+    }
+  },
+  "tracks": {
+    "pulse0": [
+      {"pattern": "E1", "repeat": 1},
+      {"pattern": "E2", "repeat": 1},
+      {"pattern": "E3", "repeat": 1},
+      {"pattern": "E4", "repeat": 1},
+      {"pattern": "E5", "repeat": 1},
+      {"pattern": "E6", "repeat": 1}
+    ],
+    "pulse1": [
+      {"pattern": "EA", "repeat": 1},
+      {"pattern": "EB", "repeat": 1},
+      {"pattern": "EC", "repeat": 1},
+      {"pattern": "EB", "repeat": 1},
+      {"pattern": "EE", "repeat": 1},
+      {"pattern": "EF", "repeat": 1}
+    ],
+    "pulse2": [
+      {"pattern": "bA", "repeat": 1},
+      {"pattern": "bA", "repeat": 1},
+      {"pattern": "bF", "repeat": 1},
+      {"pattern": "bD", "repeat": 1},
+      {"pattern": "bA", "repeat": 1},
+      {"pattern": "bC", "repeat": 1},
+      {"pattern": "bF", "repeat": 1},
+      {"pattern": "bD", "repeat": 1},
+      {"pattern": "bA", "repeat": 1},
+      {"pattern": "bE", "repeat": 1},
+      {"pattern": "bF", "repeat": 1},
+      {"pattern": "bA", "repeat": 1}
+    ],
+    "noise": [
+      {"pattern": "drip", "repeat": 1},
+      {"pattern": "drip", "repeat": 1},
+      {"pattern": "drip2", "repeat": 1},
+      {"pattern": "drip", "repeat": 1},
+      {"pattern": "drip3", "repeat": 1},
+      {"pattern": "drip", "repeat": 1},
+      {"pattern": "drip", "repeat": 1},
+      {"pattern": "drip2", "repeat": 1},
+      {"pattern": "drip", "repeat": 1},
+      {"pattern": "drip3", "repeat": 1},
+      {"pattern": "drip", "repeat": 1},
+      {"pattern": "drip2", "repeat": 1}
+    ]
+  },
+  "loop": true
+}

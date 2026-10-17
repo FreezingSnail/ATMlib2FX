@@ -1,0 +1,42 @@
+{
+  "format": "atmlib-score",
+  "version": 1,
+  "id": "preview_isolated_v1",
+  "clock": {"tick_rate": 50, "ticks_per_beat": 25, "beats_per_bar": 4},
+  "instruments": {
+    "lead": {"voice": "pulse", "volume": 100, "duty": 127},
+    "perc": {"voice": "noise", "volume": 100}
+  },
+  "patterns": {
+    "rest4": {"ticks": 4, "events": []},
+    "pulse_hold": {
+      "ticks": 8,
+      "events": [{"at": 0, "note": "C4", "duration": 4, "instrument": "lead"}]
+    },
+    "pulse_ones": {
+      "ticks": 8,
+      "events": [
+        {"at": 0, "note": "C5", "duration": 1, "instrument": "lead"},
+        {"at": 1, "note": "D5", "duration": 1, "instrument": "lead"},
+        {"at": 2, "note": "E5", "duration": 3, "instrument": "lead"}
+      ]
+    },
+    "noise_hits": {
+      "ticks": 8,
+      "events": [
+        {"at": 0, "note": "A2", "duration": 2, "instrument": "perc"}
+      ]
+    }
+  },
+  "tracks": {
+    "pulse0": [
+      {"pattern": "pulse_hold", "repeat": 1},
+      {"pattern": "pulse_ones", "repeat": 1},
+      {"pattern": "rest4", "repeat": 4}
+    ],
+    "noise": [
+      {"pattern": "rest4", "repeat": 6},
+      {"pattern": "noise_hits", "repeat": 2}
+    ]
+  }
+}

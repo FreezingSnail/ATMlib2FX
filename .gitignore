@@ -1,6 +1,13 @@
 
 .DS_Store
 
+# Arduino CLI build lane / generated artifacts (evidence retained on disk, not committed)
+build/
+
+# Python bytecode caches from host tooling
+__pycache__/
+*.pyc
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

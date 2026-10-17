@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:atmlib2fx:schema:atmlib-score:v1",
+  "title": "ATMlib model music score v1",
+  "description": "Strict source contract from docs/music-authoring-interface.md. Semantic rules (sorted non-overlapping events, voice/channel matching, expansion limits) are enforced by tools/atm-music and are not expressible in JSON Schema alone.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "id", "clock", "instruments", "patterns", "tracks"],
+  "properties": {
+    "format": {"const": "atmlib-score"},
+    "version": {"const": 1},
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+      "maxLength": 64
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tick_rate", "ticks_per_beat", "beats_per_bar"],
+      "properties": {
+        "tick_rate": {"type": "integer", "minimum": 8, "maximum": 255},
+        "ticks_per_beat": {"type": "integer", "minimum": 1, "maximum": 256},
+        "beats_per_bar": {"type": "integer", "minimum": 1, "maximum": 16}
+      }
+    },
+    "instruments": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["voice", "volume", "duty"],
+            "properties": {
+              "voice": {"const": "pulse"},
+              "volume": {"type": "integer", "minimum": 0, "maximum": 255},
+              "duty": {"type": "integer", "minimum": 0, "maximum": 255}
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["voice", "volume"],
+            "properties": {
+              "voice": {"const": "noise"},
+              "volume": {"type": "integer", "minimum": 0, "maximum": 255}
+            }
+          }
+        ]
+      }
+    },
+    "patterns": {
+      "type": "object",
+      "maxProperties": 256,
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ticks", "events"],
+        "properties": {
+          "ticks": {"type": "integer", "minimum": 1, "maximum": 1048576},
+          "events": {
+            "type": "array",
+            "maxItems": 4096,
+            "description": "Must be sorted by ascending at with unique at values and no overlapping gates.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["at", "note", "duration", "instrument"],
+              "properties": {
+                "at": {"type": "integer", "minimum": 0},
+                "note": {
+                  "type": "string",
+                  "pattern": "^[A-G]#?[0-9]$",
+                  "description": "Natural or sharp pitch token; semantic range is C2..D7."
+                },
+                "duration": {"type": "integer", "minimum": 1},
+                "instrument": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "tracks": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "pulse0": {"$ref": "#/$defs/track"},
+        "pulse1": {"$ref": "#/$defs/track"},
+        "pulse2": {"$ref": "#/$defs/track"},
+        "noise": {"$ref": "#/$defs/track"}
+      }
+    }
+  },
+  "$defs": {
+    "track": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pattern", "repeat"],
+        "properties": {
+          "pattern": {"type": "string"},
+          "repeat": {"type": "integer", "minimum": 1, "maximum": 256}
+        }
+      }
+    }
+  }
+}

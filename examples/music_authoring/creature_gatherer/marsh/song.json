@@ -1,0 +1,224 @@
+{
+  "format": "atmlib-score",
+  "version": 1,
+  "id": "cg_marsh_v2",
+  "clock": {
+    "tick_rate": 50,
+    "ticks_per_beat": 38,
+    "beats_per_bar": 4
+  },
+  "instruments": {
+    "lead": {
+      "voice": "pulse",
+      "volume": 70,
+      "duty": 128
+    },
+    "harm": {
+      "voice": "pulse",
+      "volume": 26,
+      "duty": 128
+    },
+    "bass": {
+      "voice": "pulse",
+      "volume": 48,
+      "duty": 128
+    },
+    "mist": {
+      "voice": "noise",
+      "volume": 16
+    }
+  },
+  "patterns": {
+    "mel1": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "E4", "duration": 36, "instrument": "lead"},
+        {"at": 38, "note": "G4", "duration": 17, "instrument": "lead"},
+        {"at": 57, "note": "A4", "duration": 17, "instrument": "lead"},
+        {"at": 76, "note": "B4", "duration": 36, "instrument": "lead"},
+        {"at": 114, "note": "G4", "duration": 36, "instrument": "lead"}
+      ]
+    },
+    "harm1": {
+      "ticks": 152,
+      "events": [
+        {"at": 19, "note": "B3", "duration": 131, "instrument": "harm"}
+      ]
+    },
+    "Em": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "E3", "duration": 150, "instrument": "bass"}
+      ]
+    },
+    "mel2": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "E4", "duration": 36, "instrument": "lead"},
+        {"at": 38, "note": "G4", "duration": 36, "instrument": "lead"},
+        {"at": 76, "note": "E4", "duration": 74, "instrument": "lead"}
+      ]
+    },
+    "harm2": {
+      "ticks": 152,
+      "events": [
+        {"at": 19, "note": "G3", "duration": 131, "instrument": "harm"}
+      ]
+    },
+    "C": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 150, "instrument": "bass"}
+      ]
+    },
+    "mel3": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "D4", "duration": 36, "instrument": "lead"},
+        {"at": 38, "note": "G4", "duration": 36, "instrument": "lead"},
+        {"at": 76, "note": "B4", "duration": 36, "instrument": "lead"},
+        {"at": 114, "note": "A4", "duration": 17, "instrument": "lead"},
+        {"at": 133, "note": "G4", "duration": 17, "instrument": "lead"}
+      ]
+    },
+    "harm3": {
+      "ticks": 152,
+      "events": [
+        {"at": 19, "note": "D4", "duration": 131, "instrument": "harm"}
+      ]
+    },
+    "G": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "G2", "duration": 150, "instrument": "bass"}
+      ]
+    },
+    "mel4": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "F#4", "duration": 74, "instrument": "lead"},
+        {"at": 76, "note": "A4", "duration": 36, "instrument": "lead"},
+        {"at": 114, "note": "F#4", "duration": 36, "instrument": "lead"}
+      ]
+    },
+    "harm4": {
+      "ticks": 152,
+      "events": [
+        {"at": 19, "note": "A3", "duration": 131, "instrument": "harm"}
+      ]
+    },
+    "D": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "D3", "duration": 150, "instrument": "bass"}
+      ]
+    },
+    "mel5": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "G4", "duration": 36, "instrument": "lead"},
+        {"at": 38, "note": "B4", "duration": 36, "instrument": "lead"},
+        {"at": 76, "note": "E5", "duration": 36, "instrument": "lead"},
+        {"at": 114, "note": "B4", "duration": 36, "instrument": "lead"}
+      ]
+    },
+    "harm5": {
+      "ticks": 152,
+      "events": [
+        {"at": 19, "note": "G3", "duration": 131, "instrument": "harm"}
+      ]
+    },
+    "mel6": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "C5", "duration": 36, "instrument": "lead"},
+        {"at": 38, "note": "B4", "duration": 17, "instrument": "lead"},
+        {"at": 57, "note": "A4", "duration": 17, "instrument": "lead"},
+        {"at": 76, "note": "E4", "duration": 74, "instrument": "lead"}
+      ]
+    },
+    "harm6": {
+      "ticks": 152,
+      "events": [
+        {"at": 19, "note": "E4", "duration": 131, "instrument": "harm"}
+      ]
+    },
+    "Am": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "A2", "duration": 150, "instrument": "bass"}
+      ]
+    },
+    "mel7": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "F#4", "duration": 36, "instrument": "lead"},
+        {"at": 38, "note": "A4", "duration": 36, "instrument": "lead"},
+        {"at": 76, "note": "D5", "duration": 36, "instrument": "lead"},
+        {"at": 114, "note": "A4", "duration": 36, "instrument": "lead"}
+      ]
+    },
+    "harm7": {
+      "ticks": 152,
+      "events": [
+        {"at": 19, "note": "A3", "duration": 131, "instrument": "harm"}
+      ]
+    },
+    "mel8": {
+      "ticks": 152,
+      "events": [
+        {"at": 0, "note": "G4", "duration": 36, "instrument": "lead"},
+        {"at": 38, "note": "E4", "duration": 74, "instrument": "lead"},
+        {"at": 114, "note": "B3", "duration": 36, "instrument": "lead"}
+      ]
+    },
+    "harm8": {
+      "ticks": 152,
+      "events": [
+        {"at": 19, "note": "B3", "duration": 131, "instrument": "harm"}
+      ]
+    },
+    "mist": {
+      "ticks": 152,
+      "events": [
+        {"at": 76, "note": "C5", "duration": 2, "instrument": "mist"}
+      ]
+    }
+  },
+  "tracks": {
+    "pulse0": [
+      {"pattern": "mel1", "repeat": 1},
+      {"pattern": "mel2", "repeat": 1},
+      {"pattern": "mel3", "repeat": 1},
+      {"pattern": "mel4", "repeat": 1},
+      {"pattern": "mel5", "repeat": 1},
+      {"pattern": "mel6", "repeat": 1},
+      {"pattern": "mel7", "repeat": 1},
+      {"pattern": "mel8", "repeat": 1}
+    ],
+    "pulse1": [
+      {"pattern": "harm1", "repeat": 1},
+      {"pattern": "harm2", "repeat": 1},
+      {"pattern": "harm3", "repeat": 1},
+      {"pattern": "harm4", "repeat": 1},
+      {"pattern": "harm5", "repeat": 1},
+      {"pattern": "harm6", "repeat": 1},
+      {"pattern": "harm7", "repeat": 1},
+      {"pattern": "harm8", "repeat": 1}
+    ],
+    "pulse2": [
+      {"pattern": "Em", "repeat": 1},
+      {"pattern": "C", "repeat": 1},
+      {"pattern": "G", "repeat": 1},
+      {"pattern": "D", "repeat": 1},
+      {"pattern": "Em", "repeat": 1},
+      {"pattern": "Am", "repeat": 1},
+      {"pattern": "D", "repeat": 1},
+      {"pattern": "Em", "repeat": 1}
+    ],
+    "noise": [
+      {"pattern": "mist", "repeat": 8}
+    ]
+  },
+  "loop": true
+}

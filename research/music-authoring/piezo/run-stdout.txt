@@ -1,0 +1,167 @@
+{
+  "chrome": "Chrome/155.0.8059.40",
+  "external_requests": [],
+  "default_profile": "raw",
+  "options": [
+    {
+      "value": "raw",
+      "label": "Raw emulator",
+      "disabled": false,
+      "selected": true
+    },
+    {
+      "value": "piezo",
+      "label": "Piezo (approx.)",
+      "disabled": false,
+      "selected": false
+    }
+  ],
+  "audio_status": "Matching preview loaded (WAV sha256 68768532bd63…).",
+  "wav_sha256": "68768532bd638a8537c8e513f126f471f46a6da7636d8b3b2032e2594cbc78f6",
+  "lanes": [
+    "pulse0",
+    "pulse1",
+    "pulse2",
+    "noise"
+  ],
+  "offline_error": null,
+  "freq_response": {
+    "frequencies": [
+      0,
+      100,
+      3300,
+      12000,
+      20000
+    ],
+    "magnitudes": [
+      0,
+      0.01019144244492054,
+      0.9777106642723083,
+      0.1204896867275238,
+      0.008740446530282497
+    ]
+  },
+  "sine_rms": {
+    "100": {
+      "raw": 0.7071067011148113,
+      "piezo": 0.007234895545396901,
+      "ratio": 0.010231688561274413
+    },
+    "3300": {
+      "raw": 0.707106592191077,
+      "piezo": 0.6912716037527931,
+      "ratio": 0.9776059386050739
+    },
+    "12000": {
+      "raw": 0.7071067811865476,
+      "piezo": 0.08520398092772025,
+      "ratio": 0.12049662539616049
+    }
+  },
+  "dc_tail": {
+    "input": 1,
+    "tailMeanAbs": 0
+  },
+  "piezo_swap": {
+    "contexts": 1,
+    "sources": 1,
+    "ctxState": "running",
+    "rawGain": 0,
+    "piezoGain": 1,
+    "filters": [
+      {
+        "type": "highpass",
+        "frequency": 700,
+        "Q": -3.0102999210357666,
+        "gain": 0
+      },
+      {
+        "type": "peaking",
+        "frequency": 3300,
+        "Q": 1.399999976158142,
+        "gain": 6
+      },
+      {
+        "type": "lowpass",
+        "frequency": 7000,
+        "Q": -3.0102999210357666,
+        "gain": 0
+      }
+    ]
+  },
+  "toggles": {
+    "contexts": 1,
+    "sources": 1,
+    "sourceIsSameElement": true,
+    "filtersCreated": 3,
+    "resumes": 0,
+    "finalSelectValue": "raw"
+  },
+  "identity_survived": true,
+  "live_raw": {
+    "available": true,
+    "contextState": "running",
+    "maxRms": 0.016278514078309676,
+    "meanRms": 0.010574497214523897,
+    "pcmRms": 0.011527216472718075,
+    "ratioToPcm": 0.9173504496554726,
+    "windowSeconds": [
+      0.3209,
+      1.3209
+    ],
+    "dataOffset": 44
+  },
+  "live_piezo": {
+    "available": true,
+    "contextState": "running",
+    "maxRms": 0.01623722190510792,
+    "meanRms": 0.010616736845359237,
+    "pcmRms": 0.011527216472718075,
+    "ratioToPcm": 0.9210147888248905,
+    "windowSeconds": [
+      0.3209,
+      1.3209
+    ],
+    "dataOffset": 44
+  },
+  "advanced_raw": 0.343316,
+  "advanced_piezo": 0.86016,
+  "restart": {
+    "time": 0.0209,
+    "readout": "0.021 s · tick 0"
+  },
+  "seekMid": {
+    "time": 4.2594,
+    "readout": "4.259 s · tick 212"
+  },
+  "seekEnd": {
+    "time": 8.4979,
+    "readout": "8.498 s · tick 400"
+  },
+  "no_audio_context": {
+    "selectValue": "raw",
+    "piezoDisabled": true,
+    "note": "Piezo preview is unavailable in this browser. Raw emulator audio remains available.",
+    "contexts": 0,
+    "sources": 0,
+    "rawStillPlays": true,
+    "currentTime": 0.713936,
+    "audioStatus": "Matching preview loaded (WAV sha256 68768532bd63…)."
+  },
+  "resume_reject": {
+    "selectValue": "raw",
+    "piezoDisabled": true,
+    "note": "Piezo preview is unavailable in this browser. Raw emulator audio remains available.",
+    "contexts": 1,
+    "sources": 0,
+    "resumes": 1,
+    "ctxState": "suspended",
+    "rawStillPlays": true,
+    "currentTime": 0.81134
+  },
+  "exceptions": {
+    "ui": [],
+    "no_api": [],
+    "resume_reject": []
+  }
+}

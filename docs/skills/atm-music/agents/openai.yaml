@@ -1,0 +1,4 @@
+interface:
+  display_name: "ATMlib2FX Music"
+  short_description: "Compose and refine ATMlib2FX music with previews"
+  default_prompt: "Use $atm-music to compose or revise a track for this port, then render a matching preview and check its loop."

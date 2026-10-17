@@ -1,5 +1,22 @@
 # Project Instructions for AI Agents
 
+## Repository boundaries
+
+Keep `tools/` limited to maintained host CLI/UI code and required runtime assets.
+Keep authored music and its preview media in `examples/`, developer checks and
+goldens in `tests/`, and spikes, measurement utilities and results in `research/`.
+Write intermediate generated outputs under `build/`. See
+`docs/repository-layout.md` for entry points and relocated paths. Preserve captured
+evidence and existing provenance when reorganizing files.
+
+## Music composition skill
+
+For composing, reviewing, or revising tracks with the local authoring tools,
+use [the atm-music skill](docs/skills/atm-music/SKILL.md). It covers musical
+guidance, port-specific capabilities, tempo, loops, and matching previews.
+Its repository copy lives under `docs/skills/` because this environment protects
+`.agents/` from writes; follow the skill by reading that entry point directly.
+
 This file provides instructions and context for AI coding agents working on this project.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->

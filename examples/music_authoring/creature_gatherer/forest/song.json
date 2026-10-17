@@ -1,0 +1,426 @@
+{
+  "format": "atmlib-score",
+  "version": 1,
+  "id": "cg_forest_v1",
+  "clock": {
+    "tick_rate": 50,
+    "ticks_per_beat": 23,
+    "beats_per_bar": 4
+  },
+  "instruments": {
+    "lead": {
+      "voice": "pulse",
+      "volume": 80,
+      "duty": 64
+    },
+    "answer": {
+      "voice": "pulse",
+      "volume": 48,
+      "duty": 64
+    },
+    "bass": {
+      "voice": "pulse",
+      "volume": 70,
+      "duty": 176
+    },
+    "rustle": {
+      "voice": "noise",
+      "volume": 36
+    }
+  },
+  "patterns": {
+    "L1": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "A4", "duration": 21, "instrument": "lead"},
+        {"at": 23, "note": "C5", "duration": 11, "instrument": "lead"},
+        {"at": 34, "note": "B4", "duration": 12, "instrument": "lead"},
+        {"at": 46, "note": "E5", "duration": 29, "instrument": "lead"},
+        {"at": 80, "note": "G4", "duration": 10, "instrument": "lead"},
+        {"at": 92, "note": "A4", "duration": 38, "instrument": "lead"},
+        {"at": 138, "note": "C5", "duration": 21, "instrument": "lead"},
+        {"at": 161, "note": "B4", "duration": 19, "instrument": "lead"}
+      ]
+    },
+    "L2": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "F#4", "duration": 23, "instrument": "lead"},
+        {"at": 23, "note": "A4", "duration": 11, "instrument": "lead"},
+        {"at": 34, "note": "D5", "duration": 35, "instrument": "lead"},
+        {"at": 80, "note": "C5", "duration": 10, "instrument": "lead"},
+        {"at": 92, "note": "C5", "duration": 42, "instrument": "lead"},
+        {"at": 138, "note": "A4", "duration": 19, "instrument": "lead"},
+        {"at": 161, "note": "G4", "duration": 19, "instrument": "lead"}
+      ]
+    },
+    "L3": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "A4", "duration": 19, "instrument": "lead"},
+        {"at": 23, "note": "C5", "duration": 10, "instrument": "lead"},
+        {"at": 34, "note": "D5", "duration": 10, "instrument": "lead"},
+        {"at": 46, "note": "E5", "duration": 33, "instrument": "lead"},
+        {"at": 80, "note": "D5", "duration": 10, "instrument": "lead"},
+        {"at": 92, "note": "C5", "duration": 42, "instrument": "lead"},
+        {"at": 138, "note": "C5", "duration": 19, "instrument": "lead"},
+        {"at": 161, "note": "G4", "duration": 11, "instrument": "lead"}
+      ]
+    },
+    "L4": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "F#4", "duration": 19, "instrument": "lead"},
+        {"at": 23, "note": "A4", "duration": 11, "instrument": "lead"},
+        {"at": 34, "note": "D5", "duration": 12, "instrument": "lead"},
+        {"at": 46, "note": "A4", "duration": 38, "instrument": "lead"},
+        {"at": 92, "note": "G4", "duration": 19, "instrument": "lead"},
+        {"at": 115, "note": "E4", "duration": 19, "instrument": "lead"},
+        {"at": 138, "note": "E4", "duration": 38, "instrument": "lead"}
+      ]
+    },
+    "L5": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "B4", "duration": 21, "instrument": "lead"},
+        {"at": 23, "note": "E5", "duration": 23, "instrument": "lead"},
+        {"at": 46, "note": "E5", "duration": 19, "instrument": "lead"},
+        {"at": 69, "note": "B4", "duration": 19, "instrument": "lead"},
+        {"at": 92, "note": "A4", "duration": 21, "instrument": "lead"},
+        {"at": 115, "note": "D5", "duration": 23, "instrument": "lead"},
+        {"at": 138, "note": "D5", "duration": 19, "instrument": "lead"},
+        {"at": 161, "note": "A4", "duration": 19, "instrument": "lead"}
+      ]
+    },
+    "L6": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "G4", "duration": 21, "instrument": "lead"},
+        {"at": 23, "note": "C5", "duration": 23, "instrument": "lead"},
+        {"at": 46, "note": "E5", "duration": 33, "instrument": "lead"},
+        {"at": 80, "note": "D5", "duration": 10, "instrument": "lead"},
+        {"at": 92, "note": "B4", "duration": 23, "instrument": "lead"},
+        {"at": 115, "note": "G4", "duration": 19, "instrument": "lead"},
+        {"at": 134, "note": "G4", "duration": 19, "instrument": "lead"},
+        {"at": 161, "note": "B4", "duration": 19, "instrument": "lead"}
+      ]
+    },
+    "L7": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "A4", "duration": 21, "instrument": "lead"},
+        {"at": 23, "note": "C5", "duration": 11, "instrument": "lead"},
+        {"at": 34, "note": "B4", "duration": 12, "instrument": "lead"},
+        {"at": 46, "note": "E5", "duration": 33, "instrument": "lead"},
+        {"at": 80, "note": "G5", "duration": 10, "instrument": "lead"},
+        {"at": 92, "note": "E5", "duration": 23, "instrument": "lead"},
+        {"at": 115, "note": "E5", "duration": 23, "instrument": "lead"},
+        {"at": 138, "note": "C5", "duration": 42, "instrument": "lead"}
+      ]
+    },
+    "L8": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "D5", "duration": 21, "instrument": "lead"},
+        {"at": 23, "note": "F#5", "duration": 11, "instrument": "lead"},
+        {"at": 34, "note": "E5", "duration": 10, "instrument": "lead"},
+        {"at": 46, "note": "D5", "duration": 19, "instrument": "lead"},
+        {"at": 69, "note": "C5", "duration": 19, "instrument": "lead"},
+        {"at": 92, "note": "C5", "duration": 21, "instrument": "lead"},
+        {"at": 115, "note": "A4", "duration": 40, "instrument": "lead"},
+        {"at": 161, "note": "E5", "duration": 19, "instrument": "lead"}
+      ]
+    },
+    "A1": {
+      "ticks": 184,
+      "events": [
+        {"at": 58, "note": "E4", "duration": 9, "instrument": "answer"},
+        {"at": 69, "note": "D4", "duration": 10, "instrument": "answer"},
+        {"at": 92, "note": "C4", "duration": 19, "instrument": "answer"},
+        {"at": 115, "note": "E4", "duration": 11, "instrument": "answer"},
+        {"at": 134, "note": "E4", "duration": 12, "instrument": "answer"},
+        {"at": 153, "note": "C4", "duration": 12, "instrument": "answer"},
+        {"at": 169, "note": "B3", "duration": 11, "instrument": "answer"}
+      ]
+    },
+    "A2": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "A3", "duration": 19, "instrument": "answer"},
+        {"at": 46, "note": "D4", "duration": 12, "instrument": "answer"},
+        {"at": 58, "note": "F#4", "duration": 11, "instrument": "answer"},
+        {"at": 92, "note": "E4", "duration": 15, "instrument": "answer"},
+        {"at": 115, "note": "C4", "duration": 15, "instrument": "answer"},
+        {"at": 138, "note": "C4", "duration": 23, "instrument": "answer"},
+        {"at": 161, "note": "E4", "duration": 23, "instrument": "answer"}
+      ]
+    },
+    "A3": {
+      "ticks": 184,
+      "events": [
+        {"at": 23, "note": "E4", "duration": 10, "instrument": "answer"},
+        {"at": 34, "note": "F#4", "duration": 10, "instrument": "answer"},
+        {"at": 46, "note": "G4", "duration": 10, "instrument": "answer"},
+        {"at": 58, "note": "E4", "duration": 19, "instrument": "answer"},
+        {"at": 92, "note": "A4", "duration": 13, "instrument": "answer"},
+        {"at": 115, "note": "G4", "duration": 13, "instrument": "answer"},
+        {"at": 138, "note": "E4", "duration": 13, "instrument": "answer"},
+        {"at": 153, "note": "D4", "duration": 14, "instrument": "answer"},
+        {"at": 169, "note": "C4", "duration": 11, "instrument": "answer"}
+      ]
+    },
+    "A4": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "B3", "duration": 19, "instrument": "answer"},
+        {"at": 46, "note": "G4", "duration": 10, "instrument": "answer"},
+        {"at": 58, "note": "F#4", "duration": 9, "instrument": "answer"},
+        {"at": 69, "note": "E4", "duration": 19, "instrument": "answer"},
+        {"at": 92, "note": "E4", "duration": 10, "instrument": "answer"},
+        {"at": 104, "note": "F#4", "duration": 9, "instrument": "answer"},
+        {"at": 115, "note": "G4", "duration": 17, "instrument": "answer"},
+        {"at": 144, "note": "B3", "duration": 38, "instrument": "answer"}
+      ]
+    },
+    "A5": {
+      "ticks": 184,
+      "events": [
+        {"at": 12, "note": "E4", "duration": 13, "instrument": "answer"},
+        {"at": 34, "note": "B3", "duration": 14, "instrument": "answer"},
+        {"at": 58, "note": "E4", "duration": 13, "instrument": "answer"},
+        {"at": 80, "note": "D4", "duration": 14, "instrument": "answer"},
+        {"at": 104, "note": "A3", "duration": 13, "instrument": "answer"},
+        {"at": 126, "note": "D4", "duration": 14, "instrument": "answer"},
+        {"at": 150, "note": "C4", "duration": 13, "instrument": "answer"},
+        {"at": 172, "note": "D4", "duration": 12, "instrument": "answer"}
+      ]
+    },
+    "A6": {
+      "ticks": 184,
+      "events": [
+        {"at": 46, "note": "G4", "duration": 12, "instrument": "answer"},
+        {"at": 69, "note": "E4", "duration": 11, "instrument": "answer"},
+        {"at": 92, "note": "D4", "duration": 19, "instrument": "answer"},
+        {"at": 115, "note": "G3", "duration": 19, "instrument": "answer"},
+        {"at": 138, "note": "B3", "duration": 19, "instrument": "answer"},
+        {"at": 161, "note": "D4", "duration": 19, "instrument": "answer"}
+      ]
+    },
+    "A7": {
+      "ticks": 184,
+      "events": [
+        {"at": 23, "note": "E4", "duration": 10, "instrument": "answer"},
+        {"at": 34, "note": "D4", "duration": 10, "instrument": "answer"},
+        {"at": 46, "note": "C4", "duration": 19, "instrument": "answer"},
+        {"at": 92, "note": "A3", "duration": 13, "instrument": "answer"},
+        {"at": 115, "note": "C4", "duration": 13, "instrument": "answer"},
+        {"at": 138, "note": "E4", "duration": 13, "instrument": "answer"},
+        {"at": 161, "note": "E4", "duration": 13, "instrument": "answer"}
+      ]
+    },
+    "A8": {
+      "ticks": 184,
+      "events": [
+        {"at": 0, "note": "A3", "duration": 19, "instrument": "answer"},
+        {"at": 46, "note": "D4", "duration": 10, "instrument": "answer"},
+        {"at": 58, "note": "D4", "duration": 9, "instrument": "answer"},
+        {"at": 69, "note": "E4", "duration": 19, "instrument": "answer"},
+        {"at": 92, "note": "E4", "duration": 12, "instrument": "answer"},
+        {"at": 104, "note": "C4", "duration": 11, "instrument": "answer"},
+        {"at": 115, "note": "C4", "duration": 11, "instrument": "answer"},
+        {"at": 138, "note": "C4", "duration": 12, "instrument": "answer"},
+        {"at": 153, "note": "A3", "duration": 23, "instrument": "answer"}
+      ]
+    },
+    "B1": {
+      "ticks": 92,
+      "events": [
+        {"at": 0, "note": "A2", "duration": 19, "instrument": "bass"},
+        {"at": 23, "note": "E3", "duration": 10, "instrument": "bass"},
+        {"at": 34, "note": "G3", "duration": 10, "instrument": "bass"},
+        {"at": 46, "note": "A3", "duration": 19, "instrument": "bass"},
+        {"at": 69, "note": "E3", "duration": 10, "instrument": "bass"},
+        {"at": 80, "note": "D3", "duration": 10, "instrument": "bass"}
+      ]
+    },
+    "B2": {
+      "ticks": 92,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 19, "instrument": "bass"},
+        {"at": 23, "note": "G3", "duration": 10, "instrument": "bass"},
+        {"at": 34, "note": "E3", "duration": 10, "instrument": "bass"},
+        {"at": 46, "note": "C3", "duration": 19, "instrument": "bass"},
+        {"at": 69, "note": "G3", "duration": 10, "instrument": "bass"},
+        {"at": 80, "note": "A3", "duration": 10, "instrument": "bass"}
+      ]
+    },
+    "B3": {
+      "ticks": 92,
+      "events": [
+        {"at": 0, "note": "D3", "duration": 19, "instrument": "bass"},
+        {"at": 23, "note": "A3", "duration": 10, "instrument": "bass"},
+        {"at": 34, "note": "F#3", "duration": 10, "instrument": "bass"},
+        {"at": 46, "note": "D3", "duration": 19, "instrument": "bass"},
+        {"at": 69, "note": "A3", "duration": 10, "instrument": "bass"},
+        {"at": 80, "note": "C4", "duration": 10, "instrument": "bass"}
+      ]
+    },
+    "B4": {
+      "ticks": 92,
+      "events": [
+        {"at": 0, "note": "A2", "duration": 19, "instrument": "bass"},
+        {"at": 23, "note": "E3", "duration": 10, "instrument": "bass"},
+        {"at": 34, "note": "G3", "duration": 10, "instrument": "bass"},
+        {"at": 46, "note": "E3", "duration": 10, "instrument": "bass"},
+        {"at": 58, "note": "D3", "duration": 9, "instrument": "bass"},
+        {"at": 69, "note": "C3", "duration": 10, "instrument": "bass"},
+        {"at": 80, "note": "B2", "duration": 10, "instrument": "bass"}
+      ]
+    },
+    "B5": {
+      "ticks": 92,
+      "events": [
+        {"at": 0, "note": "E3", "duration": 19, "instrument": "bass"},
+        {"at": 23, "note": "B2", "duration": 10, "instrument": "bass"},
+        {"at": 34, "note": "D3", "duration": 10, "instrument": "bass"},
+        {"at": 46, "note": "E3", "duration": 19, "instrument": "bass"},
+        {"at": 69, "note": "G3", "duration": 10, "instrument": "bass"},
+        {"at": 80, "note": "F#3", "duration": 10, "instrument": "bass"}
+      ]
+    },
+    "B6": {
+      "ticks": 92,
+      "events": [
+        {"at": 0, "note": "D3", "duration": 19, "instrument": "bass"},
+        {"at": 23, "note": "A2", "duration": 10, "instrument": "bass"},
+        {"at": 34, "note": "D3", "duration": 10, "instrument": "bass"},
+        {"at": 46, "note": "F#3", "duration": 19, "instrument": "bass"},
+        {"at": 69, "note": "A3", "duration": 10, "instrument": "bass"},
+        {"at": 80, "note": "G3", "duration": 10, "instrument": "bass"}
+      ]
+    },
+    "B7": {
+      "ticks": 92,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 19, "instrument": "bass"},
+        {"at": 23, "note": "G2", "duration": 10, "instrument": "bass"},
+        {"at": 34, "note": "E3", "duration": 10, "instrument": "bass"},
+        {"at": 46, "note": "G3", "duration": 19, "instrument": "bass"},
+        {"at": 69, "note": "C4", "duration": 10, "instrument": "bass"},
+        {"at": 80, "note": "B3", "duration": 10, "instrument": "bass"}
+      ]
+    },
+    "B8": {
+      "ticks": 92,
+      "events": [
+        {"at": 0, "note": "G2", "duration": 19, "instrument": "bass"},
+        {"at": 23, "note": "D3", "duration": 10, "instrument": "bass"},
+        {"at": 34, "note": "B2", "duration": 10, "instrument": "bass"},
+        {"at": 46, "note": "G3", "duration": 19, "instrument": "bass"},
+        {"at": 69, "note": "D3", "duration": 10, "instrument": "bass"},
+        {"at": 80, "note": "F#3", "duration": 10, "instrument": "bass"}
+      ]
+    },
+    "B9": {
+      "ticks": 92,
+      "events": [
+        {"at": 0, "note": "A2", "duration": 54, "instrument": "bass"},
+        {"at": 58, "note": "E3", "duration": 15, "instrument": "bass"},
+        {"at": 77, "note": "A2", "duration": 11, "instrument": "bass"}
+      ]
+    },
+    "N1": {
+      "ticks": 92,
+      "events": [
+        {"at": 23, "note": "C5", "duration": 4, "instrument": "rustle"},
+        {"at": 69, "note": "C3", "duration": 3, "instrument": "rustle"}
+      ]
+    },
+    "N2": {
+      "ticks": 92,
+      "events": [
+        {"at": 12, "note": "C3", "duration": 2, "instrument": "rustle"},
+        {"at": 58, "note": "C5", "duration": 3, "instrument": "rustle"},
+        {"at": 80, "note": "C3", "duration": 2, "instrument": "rustle"}
+      ]
+    },
+    "N3": {
+      "ticks": 92,
+      "events": [
+        {"at": 34, "note": "C5", "duration": 4, "instrument": "rustle"},
+        {"at": 58, "note": "C3", "duration": 2, "instrument": "rustle"}
+      ]
+    },
+    "N4": {
+      "ticks": 92,
+      "events": [
+        {"at": 23, "note": "C3", "duration": 3, "instrument": "rustle"},
+        {"at": 69, "note": "C5", "duration": 4, "instrument": "rustle"}
+      ]
+    },
+    "N5": {
+      "ticks": 92,
+      "events": [
+        {"at": 46, "note": "C5", "duration": 5, "instrument": "rustle"}
+      ]
+    }
+  },
+  "tracks": {
+    "pulse0": [
+      {"pattern": "L1", "repeat": 1},
+      {"pattern": "L2", "repeat": 1},
+      {"pattern": "L3", "repeat": 1},
+      {"pattern": "L4", "repeat": 1},
+      {"pattern": "L5", "repeat": 1},
+      {"pattern": "L6", "repeat": 1},
+      {"pattern": "L7", "repeat": 1},
+      {"pattern": "L8", "repeat": 1}
+    ],
+    "pulse1": [
+      {"pattern": "A1", "repeat": 1},
+      {"pattern": "A2", "repeat": 1},
+      {"pattern": "A3", "repeat": 1},
+      {"pattern": "A4", "repeat": 1},
+      {"pattern": "A5", "repeat": 1},
+      {"pattern": "A6", "repeat": 1},
+      {"pattern": "A7", "repeat": 1},
+      {"pattern": "A8", "repeat": 1}
+    ],
+    "pulse2": [
+      {"pattern": "B1", "repeat": 1},
+      {"pattern": "B2", "repeat": 1},
+      {"pattern": "B3", "repeat": 1},
+      {"pattern": "B4", "repeat": 1},
+      {"pattern": "B1", "repeat": 1},
+      {"pattern": "B2", "repeat": 1},
+      {"pattern": "B3", "repeat": 1},
+      {"pattern": "B5", "repeat": 2},
+      {"pattern": "B6", "repeat": 1},
+      {"pattern": "B7", "repeat": 1},
+      {"pattern": "B8", "repeat": 1},
+      {"pattern": "B1", "repeat": 1},
+      {"pattern": "B2", "repeat": 1},
+      {"pattern": "B3", "repeat": 1},
+      {"pattern": "B9", "repeat": 1}
+    ],
+    "noise": [
+      {"pattern": "N1", "repeat": 1},
+      {"pattern": "N2", "repeat": 1},
+      {"pattern": "N1", "repeat": 1},
+      {"pattern": "N3", "repeat": 1},
+      {"pattern": "N4", "repeat": 1},
+      {"pattern": "N2", "repeat": 1},
+      {"pattern": "N1", "repeat": 1},
+      {"pattern": "N3", "repeat": 1},
+      {"pattern": "N5", "repeat": 1},
+      {"pattern": "N2", "repeat": 1},
+      {"pattern": "N4", "repeat": 1},
+      {"pattern": "N3", "repeat": 1},
+      {"pattern": "N1", "repeat": 1},
+      {"pattern": "N2", "repeat": 1},
+      {"pattern": "N1", "repeat": 1},
+      {"pattern": "N5", "repeat": 1}
+    ]
+  },
+  "loop": true
+}

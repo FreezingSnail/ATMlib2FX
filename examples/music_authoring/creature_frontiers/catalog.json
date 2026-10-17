@@ -1,0 +1,54 @@
+{
+  "format": "atmlib-song-library-catalog",
+  "version": 1,
+  "entries": [
+    {
+      "id": "pocket_nursery",
+      "name": "Pocket Nursery",
+      "category": "Creature Frontiers \u2014 original RPG cues",
+      "context": "home village / creature nursery. D major, 88.24 BPM, 3/4, 16 bars, 32.64 s. 3/4 waltz, root\u2013chord accompaniment, round pulse lead, quiet answering voice, restrained noise brushes.",
+      "source": "examples/music_authoring/creature_frontiers/pocket_nursery/song.json",
+      "preview": "examples/music_authoring/creature_frontiers/pocket_nursery/preview"
+    },
+    {
+      "id": "cloverbound_route",
+      "name": "Cloverbound Route",
+      "category": "Creature Frontiers \u2014 original RPG cues",
+      "context": "daytime meadow / gathering route. G major, 136.36 BPM, 4/4, 16 bars, 28.16 s. Dotted hook, eighth-note chord arpeggios, offbeat bass, narrow/round pulse contrast and backbeat noise.",
+      "source": "examples/music_authoring/creature_frontiers/cloverbound_route/song.json",
+      "preview": "examples/music_authoring/creature_frontiers/cloverbound_route/preview"
+    },
+    {
+      "id": "lanternfen",
+      "name": "Lanternfen",
+      "category": "Creature Frontiers \u2014 original RPG cues",
+      "context": "dusk wetland / rare creature habitat. E minor, 75.00 BPM, 4/4, 12 bars, 38.40 s. Spacious gates, alternating low/high-duty lead color, sparse lower-register echoes, held root bass and tiny noise rustles; raised seventh at dominant cadences.",
+      "source": "examples/music_authoring/creature_frontiers/lanternfen/song.json",
+      "preview": "examples/music_authoring/creature_frontiers/lanternfen/preview"
+    },
+    {
+      "id": "bramble_skirmish",
+      "name": "Bramble Skirmish",
+      "category": "Creature Frontiers \u2014 original RPG cues",
+      "context": "wild creature encounter. D minor, 176.47 BPM, 4/4, 16 bars, 21.76 s. Fast gated riff, syncopated root/fifth bass, sixteenth-note broken chords, stepped duty accents and snare/noise fills; harmonic-minor dominant.",
+      "source": "examples/music_authoring/creature_frontiers/bramble_skirmish/song.json",
+      "preview": "examples/music_authoring/creature_frontiers/bramble_skirmish/preview"
+    },
+    {
+      "id": "prism_burrow",
+      "name": "Prism Burrow",
+      "category": "Creature Frontiers \u2014 original RPG cues",
+      "context": "crystal cave / hidden nest exploration. F# minor, 100.00 BPM, 4/4, 16 bars, 38.40 s. Displaced quarter-note arpeggios, register-separated melody, quiet delayed answers, long bass pedals and sparse noise sparkles; E# is spelled F in the score.",
+      "source": "examples/music_authoring/creature_frontiers/prism_burrow/song.json",
+      "preview": "examples/music_authoring/creature_frontiers/prism_burrow/preview"
+    },
+    {
+      "id": "new_wings",
+      "name": "New Wings",
+      "category": "Creature Frontiers \u2014 original RPG cues",
+      "context": "evolution grove / new companion celebration. A major, 150.00 BPM, 4/4, 12 bars, 19.20 s. Octave-lift fanfare, chord-tone countermelody, alternating pulse duty and volume accents, bright arpeggios, root/octave bass and rising noise fill.",
+      "source": "examples/music_authoring/creature_frontiers/new_wings/song.json",
+      "preview": "examples/music_authoring/creature_frontiers/new_wings/preview"
+    }
+  ]
+}

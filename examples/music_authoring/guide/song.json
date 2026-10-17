@@ -1,0 +1,69 @@
+{
+  "format": "atmlib-score",
+  "version": 1,
+  "id": "guide_sketch_v1",
+  "clock": {
+    "tick_rate": 50,
+    "ticks_per_beat": 30,
+    "beats_per_bar": 4
+  },
+  "instruments": {
+    "lead": {
+      "voice": "pulse",
+      "volume": 80,
+      "duty": 127
+    },
+    "bass": {
+      "voice": "pulse",
+      "volume": 64,
+      "duty": 200
+    },
+    "perc": {
+      "voice": "noise",
+      "volume": 38
+    }
+  },
+  "patterns": {
+    "melody": {
+      "ticks": 60,
+      "events": [
+        {"at": 0, "note": "C4", "duration": 12, "instrument": "lead"},
+        {"at": 30, "note": "E4", "duration": 12, "instrument": "lead"}
+      ]
+    },
+    "bassline": {
+      "ticks": 60,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 24, "instrument": "bass"}
+      ]
+    },
+    "kick": {
+      "ticks": 60,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 2, "instrument": "perc"}
+      ]
+    },
+    "harmony": {
+      "ticks": 60,
+      "events": [
+        {"at": 0, "note": "E3", "duration": 12, "instrument": "lead"},
+        {"at": 30, "note": "G3", "duration": 12, "instrument": "lead"}
+      ]
+    }
+  },
+  "tracks": {
+    "pulse0": [
+      {"pattern": "melody", "repeat": 2}
+    ],
+    "pulse1": [
+      {"pattern": "harmony", "repeat": 2}
+    ],
+    "pulse2": [
+      {"pattern": "bassline", "repeat": 2}
+    ],
+    "noise": [
+      {"pattern": "kick", "repeat": 2}
+    ]
+  },
+  "loop": true
+}

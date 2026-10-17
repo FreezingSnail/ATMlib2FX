@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; media-src blob: data:; font-src data:; frame-src 'self' about: blob: data:; child-src 'self' about: blob: data:">
+<title>ATMlib example song library</title>
+<style>
+__ATMLIB_PLAYER_CSS__
+</style>
+</head>
+<body>
+<div class="lp">
+  <header class="lp-head">
+    <h1 id="lp-title">ATMlib example song library</h1>
+    <p class="lp-sub" id="lp-note">Browse folders and songs, then play the matching audio alongside its piano-roll or tracker view. Everything works offline.</p>
+  </header>
+  <form class="lp-controls" id="lp-controls" onsubmit="return false">
+    <label class="lp-label" for="lp-folder">Folder
+      <select id="lp-folder" aria-controls="lp-select"></select>
+    </label>
+    <label class="lp-label" for="lp-select">Song
+      <select id="lp-select" aria-describedby="lp-context"></select>
+    </label>
+    <button type="button" id="lp-prev" aria-label="Previous song">&#9664; Previous</button>
+    <button type="button" id="lp-next" aria-label="Next song">Next &#9654;</button>
+    <span class="lp-context-wrap">Game context: <span id="lp-context"></span></span>
+  </form>
+  <p class="lp-status" id="lp-status" role="status" aria-live="polite"></p>
+  <p class="lp-meta" id="lp-meta"></p>
+</div>
+<main class="lp-stage" id="lp-stage">
+  <p class="lp-empty" id="lp-empty">Loading the library&hellip;</p>
+</main>
+<script type="application/json" id="atmlib-library">__ATMLIB_LIBRARY__</script>
+<script>
+__ATMLIB_PLAYER_JS__
+</script>
+</body>
+</html>
