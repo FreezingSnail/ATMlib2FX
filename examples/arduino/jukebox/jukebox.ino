@@ -44,6 +44,10 @@ ATMsynth ATM;
 
 uint8_t selected_song = 0;
 bool playback_started = false;
+/* The framebuffer only changes when selection or playback status changes.
+ * Redraw on demand instead of re-rendering all eight text lines every frame
+ * (the Ardens profile showed ~70% of cycles in text rendering + blit). */
+static bool ui_dirty = true;
 
 /* Copy a PROGMEM string into a NUL-terminated RAM buffer (tail truncated). */
 static void copy_progmem(char *dest, const char *src, uint8_t max_len) {
@@ -159,17 +163,24 @@ void loop() {
   if (arduboy.justPressed(UP_BUTTON)) {
     selected_song = selected_song == 0 ? JUKEBOX_SONG_COUNT - 1 : selected_song - 1;
     play_selected();
+    ui_dirty = true;
   }
   if (arduboy.justPressed(DOWN_BUTTON)) {
     selected_song = (selected_song + 1) % JUKEBOX_SONG_COUNT;
     play_selected();
+    ui_dirty = true;
   }
   if (arduboy.justPressed(A_BUTTON)) {
     play_selected();
+    ui_dirty = true;
   }
   if (arduboy.justPressed(B_BUTTON)) {
     ATM.playPause();
+    ui_dirty = true;
   }
 
-  draw_ui();
+  if (ui_dirty) {
+    draw_ui();
+    ui_dirty = false;
+  }
 }
