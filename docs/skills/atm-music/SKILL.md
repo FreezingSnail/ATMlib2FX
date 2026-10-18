@@ -41,18 +41,23 @@ of where this skill is installed. Follow the repository's Beads workflow.
   non-overlapping. `noise_retrig` is noise-channel only; the other five are
   pulse-channel effects. Omitting both keys leaves an older score unchanged.
   Read [composition guidance](references/composition.md) for musical recipes.
-- Effects and commands are emitted by the PROGMEM backend. The finite-v1 FX
-  adapter rejects any score that declares `effects` or `commands` (it does not
-  silently drop them), so a cue that needs either is PROGMEM-only.
+- Effects and commands are emitted by both the PROGMEM backend and the compact
+  FX adapter (`tools/music_authoring/fx_backend.py`); the FX adapter encodes the
+  same engine command bytecode and never silently drops a family. Global loops
+  are exported with the `0xC1` framing (the decoder needs
+  `ATM_FX_COMPACT_LOOP=1`); a loop region larger than the ring is a streaming
+  loop when `--streaming-loops` is requested, otherwise the adapter falls back to
+  the finite `0xC0` stream with a `LOOP_NOT_EXPORTED` warning. FX SFX is not
+  offered.
 - Source changes belong in `examples/music_authoring/`; intermediate outputs
   belong in `build/`. Keep each promoted WAV/report pair and standalone review
   beside its score. Edit source, then regenerate derived files.
 - Current library demos loop. Preserve `"loop": true` when revising them unless
   the user's brief changes that requirement. Other compositions may be finite.
-- Use the PROGMEM backend for an ordinary cue and for anything with effects or
-  commands. Do not label a candidate as exported FX music or modify the engine to
-  fulfill an ordinary composition request. Preserve the project's SRAM/flash
-  priorities; report score bytes as asset cost only.
+- Use the PROGMEM backend for an ordinary cue. Do not label a candidate as
+  exported FX music or modify the engine to fulfill an ordinary composition
+  request. Preserve the project's SRAM/flash priorities; report score bytes as
+  asset cost only.
 
 ## Work from the musical problem
 

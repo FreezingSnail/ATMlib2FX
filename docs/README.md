@@ -10,7 +10,7 @@
 - [Library reference](library-reference.md): inherited library background, C/C++
   playback examples, binary score layout, and command macros.
 - [Repository layout](repository-layout.md): directory boundaries and moved files.
-- [FX music integration](fx/integration.md): finite-v1 compact FX stream ownership, service placement, refill deadline and admission limits.
+- [FX music integration](fx/integration.md): compact FX stream ownership, service placement, refill deadline, ring/admission limits, global loops (resident and streaming) and admission flags.
 - [FX research](../research/fx/README.md): storage investigation, measurements,
   architecture decisions, and experimental code.
 - [Compile-time mixer gating spike](../research/fx/fx-mixer-gating-results.md): per-channel/noise ISR mixer compile-out — recommended (go).

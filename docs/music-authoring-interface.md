@@ -353,12 +353,14 @@ one-tick gates and adjacent pattern boundaries for extra-tick errors. Legacy
 pattern/offset and call-stack limits must be checked; a flattened bounded
 representation is acceptable and must report its asset cost.
 
-FX export is implemented as a separate **finite-v1** adapter
+FX export is implemented as a separate compact adapter
 (`build --backend fx`, stream framing selected by `ATMlib2FX-hlh.6`); it emits
-the pinned compact stream and rejects pattern effects/commands, loops and SFX.
-The fixture compiler remains reference material, not a stable backend API. Check
-the chosen due-group and service-gap admission rules before emitting an FX
-artifact; the authoring format is not blocked by that decision.
+the pinned compact stream, encodes the same effect/command bytecode as the
+PROGMEM backend, and exports global loops (`0xC1`; streaming loops with
+`--streaming-loops`). FX SFX is not offered. The fixture compiler remains
+reference material, not a stable backend API. Check the chosen due-group and
+service-gap admission rules before emitting an FX artifact; the authoring
+format is not blocked by that decision.
 
 ## CLI and feedback contract
 
@@ -372,8 +374,8 @@ atm-music build song.json --backend progmem --out generated/ --json
 ```
 
 These commands are implemented by the `tools/atm-music` CLI. `--backend fx` is
-advertised for finite-v1 `build` only (pattern effects/commands, loops and SFX
-are rejected there); `validate` and `render` stay `--backend progmem`. A
+advertised for `build` (notes/rests/duties/instruments, effects/commands and
+loops); `validate` and `render` stay `--backend progmem`. A
 capability response lists schema version, implemented features,
 channel/pitch ranges, host limits, backend availability, tool version, engine
 identity and render provenance. The model reads it at the start of a session;
@@ -525,7 +527,7 @@ fields. Keep an optional agent skill or MCP transport as follow-up packaging.
   units, shared-slot collision rules, PROGMEM byte encoding and trace-confirmed
   engine semantics (above). `required_features` names the effect/command
   families a score uses; `lower`/`review.json`/the viewer carry expanded effect
-  spans and live commands; and the finite-v1 FX adapter rejects both families
+  spans and live commands; and the compact FX adapter encodes the same families
   (never silently drops them).
   Measured tick traces live in
   [`build/bead-3ii-14-3/EVIDENCE.md`](../build/bead-3ii-14-3/EVIDENCE.md).
@@ -618,40 +620,37 @@ implements the local HTML/JavaScript track review this plan proposed:
 See `tools/music_authoring/viewer/README.md` for the embedded document shape and
 the offline walkthrough driver.
 
-## Finite-v1 FX export (ATMlib2FX-3ii.3)
+## Compact FX export (ATMlib2FX-3ii.3)
 
-`build --backend fx` is now offered for **finite (non-looping, no-effect, no-SFX)
-v1 scores only**. The byte layout, limits and semantics are the pinned contract
-selected by `ATMlib2FX-hlh.6` (see the `hlh.6 review` section of
-[`research/fx/fx-architecture-decision.md`](../research/fx/fx-architecture-decision.md));
-the adapter is [`tools/music_authoring/fx_backend.py`](../tools/music_authoring/fx_backend.py).
+`build --backend fx` exports a v1 score to the compact FX stream. The byte
+layout, limits and semantics are the pinned contract selected by
+`ATMlib2FX-hlh.6` with the global-loop extensions (`hlh.8`, streaming `hlh.16`);
+the adapter is
+[`tools/music_authoring/fx_backend.py`](../tools/music_authoring/fx_backend.py).
 
-- It emits deterministic assets — `stream.bin` (magic `0xC0`, `<len> <gap>
-  <bitmap> <groups>` records, `0x00` END), `stream.h`, `review.json`,
-  `report.json` — plus packing metadata (ticks, passes, payload/framing bytes,
-  max group/record and the worst 1..8-tick decode window). Re-running yields
+- It emits deterministic assets — `stream.bin` (magic `0xC0` finite, or `0xC1`
+  loop), `stream.h`, `review.json`, `report.json` — plus packing metadata (ticks,
+  passes, payload/framing bytes, max group/record, the worst 1..8-tick decode
+  window, and for a loop the loop region/cycle/restart facts). Re-running yields
   byte-identical output.
-- Admission enforces the pinned limits (record `<= ring`, default 32 B; no
-  traversal/`SET_LOOP_PATTERN`; no effects, no live commands and no SFX) and the
+- **Effects and live commands are supported** (`ATMlib2FX-3ii.14.4`). Every
+  family lowering emits (arpeggio, note_cut, lfo, slide, glissando, noise_retrig
+  and set/add tempo, set/add transposition, set_volume, set_mod, cue) encodes to
+  a compact record with the correct per-channel mask through
+  `progmem_backend.encode_op` (never invented here), and the decoder applies the
+  same command bytecode the PROGMEM stream uses.
+- **Global loops are exported** with the pinned `0xC1` framing. A loop region
+  `<= ring` is a resident replay; a larger region is a streaming loop only with
+  `--streaming-loops` (region up to 65535 B), otherwise the adapter writes the
+  finite `0xC0` arrangement once and reports a source-pointed
+  `LOOP_NOT_EXPORTED` warning. `capabilities` advertises `loops: true`
+  (build flag `ATM_FX_COMPACT_LOOP=1`), `streaming_loops: true`
+  (`--streaming-loops`), `effects: true`, `commands: true`, `sfx: false`.
+- Admission enforces the pinned limits (record `<= ring`, default 32 B, `--ring`
+  up to 256; no traversal/`SET_LOOP_PATTERN` in the stream; no SFX) and the
   controlled foreground service window. Failures are `DUE_GROUP_TOO_LARGE` /
-  `LIMIT_EXCEEDED` / `CAPABILITY_UNSUPPORTED` diagnostics that point at the
-  offending source JSON Pointer.
-- **Pattern effects and live commands are rejected, never silently dropped**
-  (`ATMlib2FX-3ii.14.4`). The pinned contract advertises no live effects or
-  instantaneous commands, and the framing's `<gap>` field records effect-only
-  *idle* ticks between passes — not a license to reshape or reschedule an
-  authored effect. A pattern that declares `effects` fails with
-  `FX_EFFECT_UNSUPPORTED` at `/patterns/<name>/effects/<index>`; a pattern that
-  declares `commands` fails with `FX_COMMAND_UNSUPPORTED` at
-  `/patterns/<name>/commands/<index>`. Both diagnostics name the effect/command
-  kind and carry a suggested correction. No family is admitted in this revision:
-  none is exactly representable within the pinned ring/service-window rules
-  without changing the AVR decoder or the pinned framing. `capabilities`
-  advertises `effects: false` and `commands: false` and never claims otherwise.
-- A runtime global loop is **not representable** by the finite stream. A source
-  with `"loop": true` is exported as its finite arrangement exactly once and
-  reported with a source-pointed `LOOP_NOT_EXPORTED` warning; `capabilities`
-  never advertises loops, effects, commands or SFX for this backend.
+  `LIMIT_EXCEEDED` / `CAPABILITY_UNSUPPORTED` / `LOOP_CYCLE_INVALID` diagnostics
+  that point at the offending source JSON Pointer.
 - `validate` and `render` stay on `progmem`; `--backend fx` there exits `2` with
   `BACKEND_UNAVAILABLE`. The PROGMEM default build is unchanged.
 

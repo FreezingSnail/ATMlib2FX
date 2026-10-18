@@ -59,8 +59,8 @@ state and live commands. Both are additive: omitting them leaves an older score
 unchanged. Read the exact accepted fields, byte mapping and diagnostics in
 [the authoring interface](../../../music-authoring-interface.md#effect-windows-and-live-commands),
 and validate every score before trusting a render. Effects and commands are
-emitted by the PROGMEM backend; the finite-v1 FX adapter rejects any score that
-declares them, so a cue that uses them is PROGMEM-only.
+emitted by the PROGMEM backend and by the compact FX adapter (which encodes the
+same command bytecode), so an effect passage is no longer PROGMEM-only.
 
 Tick math first. Effect timing is counted in ticks, so convert from the clock
 before choosing a `period`. At 100 Hz one tick is 10 ms, so `period: 3` is a

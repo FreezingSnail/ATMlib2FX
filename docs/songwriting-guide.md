@@ -24,8 +24,9 @@ describe anything the current `src/` does not do.
   pattern reuse, whole-song loops, tempo and volume/duty presets, plus the
   additive per-pattern `effects` and `commands` keys (arpeggio, note cut, LFO,
   slide, glissando, noise retrigger; tempo/transposition/volume/duty/cue
-  commands), which are PROGMEM-only because the finite-v1 FX adapter rejects
-  them. The macro recipes below are still written at the C level; use them when
+  commands), which both the PROGMEM backend and the compact FX adapter encode
+  (the adapter uses the same command bytes). The macro recipes below are still
+  written at the C level; use them when
   hand-writing a C header against `src/atm_cmd_constants.h`.
 - Write commands with the macros only. The byte values are an implementation
   detail owned by `src/atm_cmd_constants.h`.
@@ -317,10 +318,10 @@ score compiler emits.
 | `ATM_CMD_M_{TREMOLO,VIBRATO,MOD_LFO}_ON` | 4 | yes (lfo) |
 | `ATM_CMD_M_{TREMOLO,VIBRATO,MOD_LFO}_OFF` | 2 | yes (lfo off) |
 
-The effect/command rows are emitted only when a pattern declares the matching
-`effects`/`commands` window, and only by the PROGMEM backend; the finite-v1 FX
-adapter rejects both families. `ATM_CMD_I_TRANSPOSITION_OFF`, `CALL` and
-`CALL_REPEAT` are still hand-written only.
+The effect/command rows are emitted when a pattern declares the matching
+`effects`/`commands` window, by both the PROGMEM backend and the compact FX
+adapter. `ATM_CMD_I_TRANSPOSITION_OFF`, `CALL` and `CALL_REPEAT` are still
+hand-written only.
 
 Header (full format, `ATM_SCORE_FMT_FULL`):
 
@@ -397,9 +398,10 @@ ATM_CMD_M_SLIDE_VOL_ON(MS(3)),                 /* instead of SLIDE_VOL_ON(-3) */
 A fade step of 1 cannot be made smaller, so a very slow `SLIDE_VOL_ON(-1)`
 still ends a little earlier at 60 %.
 
-Scope note: v1 JSON has **no SFX**, and the finite FX backend does not carry SFX
-or loops (see the [authoring interface](music-authoring-interface.md)
-"Finite-v1 FX export" section). Applying this rule today means lowering authored
+Scope note: v1 JSON has **no SFX**, and the compact FX backend carries loops
+(`0xC1`, streaming with `--streaming-loops`) but not SFX (see the
+[authoring interface](music-authoring-interface.md) "Compact FX export"
+section). Applying this rule today means lowering authored
 music volume; SFX authoring is a separate, not-yet-advertised capability.
 
 ## 10. Worked example patterns
@@ -487,8 +489,9 @@ All engine claims in this file were verified read-only against the current
 
 Statements that differ from the T-arg manual are marked **⚠ differs**. Nothing
 here claims a loop, effect, SFX or FX capability beyond what these sources
-implement today; loops are PROGMEM-only, and the finite FX backend carries no
-loops, effects or SFX.
+implement today; the PROGMEM and compact FX backends carry effect/command
+scores and loops (streaming loops with `--streaming-loops`), and neither offers
+SFX.
 
 See also: [library reference](library-reference.md) ·
 [model authoring guide](music-authoring-guide.md) ·

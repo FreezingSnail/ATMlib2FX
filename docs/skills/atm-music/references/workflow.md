@@ -17,17 +17,22 @@ requested change.
   shared engine slots and which commands are score-global.
 - `tools/music_authoring/progmem_backend.py`: original-format score encoding,
   including the effect/command byte mapping.
-- `tools/music_authoring/fx_backend.py`: the finite-v1 FX adapter, which rejects
-  pattern `effects`/`commands` (`FX_EFFECT_UNSUPPORTED`/`FX_COMMAND_UNSUPPORTED`).
+- `tools/music_authoring/fx_backend.py`: the compact FX adapter; it encodes
+  notes/rests/duties/instruments plus the same effect/command bytecode as
+  PROGMEM (`progmem_backend.encode_op` is authoritative), exports global loops
+  (`0xC1`) and streaming loops (`--streaming-loops`), and reports
+  `LOOP_NOT_EXPORTED` (finite `0xC0` fallback) only when a large region is not
+  requested as streaming. SFX is not offered.
 - `src/atm_cmd_constants.h`, `src/cmd_parse.c`, `src/atm_synth.c`, `src/osc.c`:
   local command meanings, effects, playback and timer behavior.
 
 `tools/atm-music capabilities --json` reports the available backends, features
 and limits. Its static report marks `inspect`, `render` and `wav_preview` as
 available, matching the working commands, and advertises `progmem` plus the
-finite-v1 FX backend for `build` (with `loops`/`effects`/`commands`/`sfx` all
-`false` for FX). Check actual command diagnostics before concluding a tool or
-feature is absent.
+compact FX backend for `build` with `effects: true`, `commands: true`,
+`loops: true` (build flag `ATM_FX_COMPACT_LOOP=1`), `streaming_loops: true`
+(`--streaming-loops`, region max 65535 B) and `sfx: false`. Check actual command
+diagnostics before concluding a tool or feature is absent.
 
 The JSON Schema (`schemas/atmlib-score-v1.schema.json`) covers the optional root
 `loop` boolean and the additive per-pattern `effects`/`commands` keys. The
@@ -111,8 +116,11 @@ non-overlapping.
 Rejections use stable codes with JSON Pointers: `UNKNOWN_EFFECT_TYPE`,
 `EFFECT_BOUNDS`, `EFFECT_ORDER`, `EFFECT_OVERLAP`, `EFFECT_CHANNEL_MISMATCH`,
 `UNKNOWN_COMMAND_TYPE`, `COMMAND_BOUNDS`, `COMMAND_ORDER`, `COMMAND_DUPLICATE`.
-A pattern with `effects`/`commands` is PROGMEM-only; `build --backend fx` fails
-with `FX_EFFECT_UNSUPPORTED` or `FX_COMMAND_UNSUPPORTED`.
+A pattern that declares `effects`/`commands` builds on either backend: the
+PROGMEM backend emits the original score and the FX adapter encodes the same
+command bytecode (never silently dropped). FX-only admission failures are
+`DUE_GROUP_TOO_LARGE`/`LIMIT_EXCEEDED`/`CAPABILITY_UNSUPPORTED` and the
+`LOOP_NOT_EXPORTED` warning.
 
 `inspect`/`review.json` carry the expanded `effects`/`commands` spans (with
 source pointers) only when the score declares them; `validate` and `build`

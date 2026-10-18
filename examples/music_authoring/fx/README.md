@@ -7,11 +7,13 @@ and its global-loop extension (`hlh.8`); the reference converter is
 [`tools/fx_pack/fx_encode.c`](../../../tools/fx_pack/fx_encode.c).
 
 The adapter exports **finite effect/command scores** (the same command bytecode
-the compact decoder parses, via `progmem_backend.encode_op`) and **resident
-global loops** with the pinned `0xC1` framing when the whole loop region fits the
-admission ring. A loop region larger than the ring (a streaming wrap, which the
-pinned contract rejects) falls back to the finite `0xC0` arrangement once with a
-`LOOP_NOT_EXPORTED` warning — never silently. SFX is not offered.
+the compact decoder parses, via `progmem_backend.encode_op`), **resident global
+loops** with the pinned `0xC1` framing when the whole loop region fits the
+admission ring, and — with `--streaming-loops` — **streaming loops** when the
+region is larger than the ring (up to 65535 B, the `hlh.16` extension). Without
+`--streaming-loops` a region larger than the ring falls back to the finite
+`0xC0` arrangement once with a `LOOP_NOT_EXPORTED` warning — never silently.
+SFX is not offered.
 
 | Fixture | Purpose | Tick rate | Stream |
 | --- | --- | ---: | ---: |
@@ -49,7 +51,8 @@ an engine or whole-game memory result.
 
 | Condition | Code | Points at |
 | --- | --- | --- |
-| Loop region larger than the ring (no resident wrap) | `LOOP_NOT_EXPORTED` (warning; finite arrangement exported once) | `/loop` |
+| Loop region larger than the ring and no `--streaming-loops` | `LOOP_NOT_EXPORTED` (warning; finite arrangement exported once) | `/loop` |
+| Loop region larger than the 65535 B streaming bound | `LIMIT_EXCEEDED` | `/loop` |
 | A loop with no representable cycle (no tracks / zero-time) | `LOOP_CYCLE_INVALID` | `/loop` |
 | A pass record larger than the ring or the controlled service window | `DUE_GROUP_TOO_LARGE` | first source event in the widest group |
 | Channel group > 255 bytes, or a gap beyond the 65535-tick varint | `LIMIT_EXCEEDED` | source event |
@@ -57,11 +60,14 @@ an engine or whole-game memory result.
 
 The admission ring is configurable: `--ring N` (power of two, `5..256`, default
 32) or the `ring` argument to `fx_backend.build`/`serialize`. A larger ring can
-admit a loop region that the default 32 B ring rejects; the host enforces the
-same record/region bounds the device build (`ATM_FX_COMPACT_RING`) requires.
+keep a loop region that the default 32 B ring would stream, and
+`--streaming-loops` admits a region larger than any ring up to 65535 B; the host
+enforces the same record/region bounds the device build (`ATM_FX_COMPACT_RING` /
+`ATM_FX_COMPACT_LOOP_STREAMING`) requires.
 
 `capabilities --json` advertises the FX backend for `build` with `effects` and
 `commands` supported, `loops` supported when the decoder is built with
-`ATM_FX_COMPACT_LOOP=1` (stated explicitly), and `sfx` false. Effect and
+`ATM_FX_COMPACT_LOOP=1` (stated explicitly), `streaming_loops` supported with
+`--streaming-loops` (region max 65535 B), and `sfx` false. Effect and
 live-command families are encoded, never silently dropped; a family is admitted
 exactly when `progmem_backend.encode_op` can encode it.

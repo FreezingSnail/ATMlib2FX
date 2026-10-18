@@ -70,8 +70,8 @@ availability and tool/engine identity. Read it at the start of a session.
 
 **Capability report matches real command support.** `capabilities --json`
 advertises `inspect`, `render` and `wav_preview` as available, matching the
-working commands, and advertises both backends: `progmem` and the finite-v1 FX
-adapter for `build`. The ATMlib2FX-3ii.1 `expected/review.json` golden keeps a
+working commands, and advertises both backends: `progmem` and the compact FX
+adapter for `build` (effects, commands, loops and streaming loops; SFX false). The ATMlib2FX-3ii.1 `expected/review.json` golden keeps a
 byte-stable *embedded* capabilities block inside `review.json` for canonical-
 event digest stability; the `inspect` and `render` subcommands report their own
 truthful availability in their own payloads:
@@ -92,7 +92,7 @@ Relevant `capabilities --json` facts:
 | --- | --- |
 | `engine` | `ATMlib` 1.2.4, channels `pulse0`,`pulse1`,`pulse2`,`noise`, tick base 2000 Hz |
 | `pitch_range` | `C2`..`D7` (note indices 1..63) |
-| `backends` | `progmem` available; `fx` available for finite-v1 `build` with `loops`/`effects`/`commands`/`sfx` all `false` |
+| `backends` | `progmem` available; `fx` available for `build` with `loops` (`ATM_FX_COMPACT_LOOP=1`), `streaming_loops` (`--streaming-loops`, max 65535 B), `effects` and `commands` true, `sfx` false |
 | host limits | 64 instruments, 256 patterns, 4096 source events, 4096 source effects, 4096 source commands, 65536 expanded notes, 1048576 ticks |
 | `canonicalization` | `atmlib-canonical-events-v1` |
 
@@ -225,10 +225,9 @@ and JSON Pointers: `UNKNOWN_EFFECT_TYPE`, `EFFECT_BOUNDS`, `EFFECT_ORDER`,
 
 > These keys are validated by the CLI and emitted by the PROGMEM backend as
 > engine effect/command bytes; `capabilities`, the canonical review payload and
-> the viewer report and draw them. The finite-v1 FX adapter rejects any score
-> that declares `effects` or `commands`
-> (`FX_EFFECT_UNSUPPORTED`/`FX_COMMAND_UNSUPPORTED`), so author effect passages
-> on the PROGMEM backend.
+> the viewer report and draw them. The compact FX adapter encodes the **same**
+> command bytecode (`progmem_backend.encode_op`), so effect/command passages
+> build on either backend; only FX SFX is out of scope.
 
 ### From a natural-language brief to concrete fields
 
@@ -444,26 +443,26 @@ infer engine or game fit from a score byte count. `build` does not invoke
 `arduino-cli`, so it reports no AVR image measurement (`avr_measurements.measured
 = false`).
 
-### PROGMEM vs FX — effects are PROGMEM-only
+### PROGMEM vs FX — effects and loops on both, SFX on neither
 
 - `progmem` is the default backend: the song lives in program flash beside the
   library, played by the original engine. It emits the full v1 surface,
   including pattern `effects` and `commands`.
-- `--backend fx` is offered for **finite v1** `build` only. It writes a compact
-  FX stream (`stream.bin`/`stream.h`) rather than a PROGMEM score, and it
-  advertises `loops`/`effects`/`commands`/`sfx` all `false`.
-- A score that declares pattern `effects` or `commands` is **rejected**, never
-  silently dropped: `build --backend fx` exits `2` with `FX_EFFECT_UNSUPPORTED`
-  at `/patterns/<name>/effects/<index>` or `FX_COMMAND_UNSUPPORTED` at
-  `/patterns/<name>/commands/<index>`. A `"loop": true` score is exported as its
-  finite arrangement once and reported with `LOOP_NOT_EXPORTED` (a warning).
+- `--backend fx` is offered for `build`. It writes a compact FX stream
+  (`stream.bin`/`stream.h`) rather than a PROGMEM score, and it advertises
+  `loops`/`effects`/`commands` as supported and `sfx` as unsupported.
+- Effects and commands are **supported**, never silently dropped: the adapter
+  encodes the same command bytes as PROGMEM. A `"loop": true` score becomes a
+  `0xC1` loop; a loop region larger than the ring needs `--streaming-loops`
+  (`--ring N` sets the ring), otherwise the adapter exports the finite `0xC0`
+  arrangement once and reports `LOOP_NOT_EXPORTED` (a warning).
 - `validate` and `render` stay `--backend progmem`; `--backend fx` there exits
   `2` with `BACKEND_UNAVAILABLE`.
 
 ```json
-{"code": "FX_EFFECT_UNSUPPORTED",
- "message": "pattern 'lead' declares a 'arpeggio' effect window; finite v1 cannot represent live effects.",
- "suggestion": "Remove the effect window. Finite v1 encodes notes, rests, pulse duty, fixed instrument volume and the clock only; author the sound with note events or build with the PROGMEM backend."}
+{"code": "DUE_GROUP_TOO_LARGE",
+ "message": "largest pass record is 34 bytes, larger than the 32-byte ring.",
+ "suggestion": "Split the event or build with a larger ring."}
 ```
 
 FX packaging (offloading the song to the FX chip, with its own stream framing,
@@ -533,7 +532,7 @@ different WAV, and a different review, all traceable back to the one edited fiel
 | faithful WAV | `tools/atm-music render SONG.json --backend progmem --seconds N --out OUT/preview --json` |
 | viewer + audio | `tools/atm-music inspect SONG.json --audio-preview OUT/preview --out OUT/review/review.html --json` |
 | PROGMEM build | `tools/atm-music build SONG.json --backend progmem --out OUT/build --json` |
-| FX build | `tools/atm-music build SONG.json --backend fx --out OUT/build --json` (finite v1 only; rejects effects/commands) |
+| FX build | `tools/atm-music build SONG.json --backend fx --out OUT/build --json` (compact stream; add `--ring N` / `--streaming-loops` for large loop regions) |
 
 Outputs written by this guide (all under the git-ignored
 `build/music-authoring/guide/`): `preview/preview.wav`,
@@ -548,8 +547,9 @@ not claim to have judged musical quality.
 - **Sound review is the listener's job.** Rendered WAVs and traces are
   correctness evidence (gates, silence, timing, determinism); they are not a
   numeric substitute for taste, and this guide does not claim a model heard them.
-- **PROGMEM is the effect-capable backend.** The finite-v1 FX adapter rejects
-  any score with pattern `effects`/`commands`; a score byte count says nothing
+- **Both backends are effect-capable.** The PROGMEM backend and the compact FX
+  adapter encode the same effect/command bytecode; the FX adapter adds loops
+  (`0xC1`, streaming with `--streaming-loops`). A score byte count says nothing
   about whole-game fit, and the FX stream's own size is not a device
   measurement.
 - **Mono capture.** The WAV is the emulated mono speaker mix; per-channel

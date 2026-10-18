@@ -51,8 +51,8 @@ playback correctness, not listener preference or physical speaker sound.
 Effects and automation: the additive per-pattern `effects` and `commands` keys
 (engine arpeggio, note cut, LFO, slide, glissando and noise retrigger; tempo,
 transposition, volume/duty and cue commands) are available for PROGMEM scores
-and are drawn in the review viewer. The finite-v1 FX adapter rejects any score
-that declares them, so an effect passage stays PROGMEM. See the
+and are drawn in the review viewer. The compact FX adapter encodes the same
+effect/command bytecode, so an effect passage builds on either backend. See the
 [authoring guide](../../docs/music-authoring-guide.md) and the
 [composition guidance](../../docs/skills/atm-music/references/composition.md).
 

@@ -46,9 +46,15 @@ extern "C" {
 #define FX_REPORT_FRAME 520
 #endif
 
+/* Device-validation hook: start on a chosen catalog index so absim evidence can
+ * cover any song without injected button input. Defaults to the first song. */
+#ifndef JUKEBOX_FX_START_SONG
+#define JUKEBOX_FX_START_SONG 0
+#endif
+
 Arduboy2 arduboy;
 
-uint8_t selected_song = 0;
+uint8_t selected_song = JUKEBOX_FX_START_SONG;
 bool playback_started = false;
 /* The framebuffer only changes when selection or playback status changes.
  * Redraw on demand instead of re-rendering all eight text lines every frame. */
