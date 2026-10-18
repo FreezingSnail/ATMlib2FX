@@ -503,3 +503,133 @@ hlh.7/hlh.10. The SFX asset is device-read directly, so the SFX must fit the
 PROGMEM record framing; large or streaming SFX is out of scope. Game fit, save
 integration and general packing remain hlh.10/hlh.11.
 
+
+## hlh.8: global loops - all-stopped sync, loop targets, same-tick extra passes (2026-10-17)
+
+Decision bead: `ATMlib2FX-hlh.8`. This section resolves the global-loop behavior
+`ATMlib2FX-hlh.6` explicitly deferred: the original engine's all-stopped loop
+restart, changed loop targets (including the pattern-0 quirk path), and the
+immediate same-tick extra effect pass with live effect state carried across. It
+extends the pinned compact contract; it does not change finite-v1 output.
+
+Source identity is frozen: `research/fx/tools/build-fx-loops.sh` snapshots the
+SHA-256 of every lane input at lane start (`build/fx-port/loops/source-hashes.txt`,
+`source-hashes.start.txt`) and re-checks the snapshot with `shasum -c` at lane end
+(`source-freeze.txt`), so evidence cannot come from mixed sources. The lane also
+orders its steps so the AVR images are rebuilt before the nested absim device
+run, and pins the fresh loop_dg ELF SHA-256 across both absim invocations
+(`run-absim-loops.sh` fails on a stale/mismatched image), so the recorded
+device bullet cannot describe a previous lane's ELF. The encoder is
+`tools/fx_pack/fx_encode.{c,h}`/`fx_pack.c`; the device decoder is the
+guarded loop block in `src/atm_fx_compact.{c,h}` (`ATM_FX_COMPACT_LOOP`, default
+0). `src/atm_synth.c`, `src/cmd_parse.c` and the finite `ATM_HAS_FX_COMPACT`
+behavior are unchanged. All evidence is in the NEW lane `build/fx-port/loops/`;
+the compact/control/pack lanes were not overwritten.
+
+### Contract extension (loop streams, magic 0xC1)
+
+```
+0xC1
+u24 LE loop_start_rel   byte offset of the first loop-region record
+<records...>            same record framing as finite, with:
+0x00 END                END is the loop boundary, not a stop
+```
+
+Loop-mode record changes:
+
+* `gap` field: `0` = next record in the **same** tick (the original's immediate
+  second pass); otherwise `effect-only ticks + 1`.
+* `bitmap`: bits 0..3 command channels, bits 4..7 the restart mask. A non-zero
+  restart mask marks the original's all-stopped pass; after applying it the
+  device re-arms those channels in the same tick. `bitmap == 0` is an
+  effect-only pass (no commands, no restart).
+
+The loop region `[loop_start_rel, stream_len-1)` is the traversal cycle found by
+detecting the first repeat of the post-restart channel state. It must fit the
+admission ring; the device pins it (stops fetching) and replays it in place, so
+the wrap needs no foreground read and cannot underrun. Rejections: a cycle that
+advances no ticks (a restart that stops again immediately) is a **zero-time
+cycle**; a traversal that does not become periodic within the tick cap is a
+**traversal-cycle** failure; the loop region must fit the ring; an **all-gap-0
+loop region** is rejected by `fx_stream_validate` (replay would stay in the
+same-tick chain and never yield a tick); `SET_LOOP_PATTERN` operand 0 is a legal
+target, 255 and out-of-range targets are rejected.
+
+The encoder reproduces the original restart exactly: the same stack frame, delay
+0, re-armed, with the frame pattern index left stale (the documented quirk). The
+decoder corresponds record-for-record, so a same-tick extra pass advances live
+effect state exactly as the original's second `process_channel` pass. The
+same-tick chain is bounded at one loop-region wrap per tick (a validated region
+always contains a non-zero gap, so its replay returns before a second wrap): a
+second wrap sets the sticky format error and stops, so crafted bytes cannot hang
+the device. `tests/fx_pack/fx_loop_selftest.c` regresses the validator rejection
+(hand-built all-gap-0 stream) and the device bound (same bytes fed straight to
+the decoder: error, stop, no hang).
+
+### New original-engine traces and compact equivalence
+
+Three fixtures under `research/fx/fx_compact_spike/loops/` are traced with the
+*unmodified* library core (`orig_trace.c`, the same timer-shim contract as the
+hlh.1 reference trace) and with the compact loop decoder (`compact_trace.c`,
+`ATM_HAS_FX_COMPACT=1`, `ATM_FX_COMPACT_LOOP=1`):
+
+* `sync` - two channels looping on periods 4 and 6; the original only restarts
+  when *every* channel has stopped, so they re-synchronize.
+* `target` - the loop target changes 1 -> 0 -> 1, exercising the pattern-0
+  quirk path.
+* `extrapass` - a volume slide left running across the loop boundary, so the
+  all-stopped tick's extra pass advances live effect state.
+
+`research/fx/fx_compact_spike/loops/run-loops.sh` converts each score with
+`fx_pack --loops` and diffs 96 music ticks, dropping only the traversal-only
+columns `cN_ps`, `cN_delay`, `cN_lp` (the compact backend resolves traversal and
+loop targets offline; no effect, oscillator, tempo or active-channel column is
+dropped). All three: **MATCH**, zero underruns, deterministic. Hashes are in
+`build/fx-port/loops/{sync,target,extrapass}.{equivalence.txt,orig.csv,compact.csv}`.
+
+### Intro/loop demo
+
+`build/fx-port/loops/demo-summary.txt`: the `extrapass` compact trace runs 200
+ticks with `underruns=0`, `error=0`, `active=1` (never stops); `intro_ticks=8`,
+`cycle_ticks=4`, and the first and second loop cycles are byte-identical
+(behavioral columns). The demo makes no claim about resetting live synth state:
+the loop carries the running slide exactly as the original does.
+
+### Device verification (absim)
+
+`build/fx-port/loops/avr-loop_dg` (12 s run, 52 fps, FX address above
+`0x010000`, one foreground service per frame), loop fixture stream pinned in the
+32-byte ring:
+
+```
+FCDIAG ticks=247 underruns=0 max_gap=1 max_record=13 max_window=13 error=0 stop_tick=0 serviced=520 frames=520
+min_stack=0x0aa8 headroom_bytes=1077
+```
+
+`stop_tick=0` (a loop never stops), zero underruns, 1077 B stack headroom. The
+run is pinned to the freshly built image (`elf_sha256=28b77e86…`, asserted
+before the emulator starts), and two consecutive frozen lane reruns reproduce
+`run-loops.log` byte-for-byte.
+
+### AVR sizes
+
+Same shell, `avr-size`:
+
+| variant | program | .text | .data | .bss | SRAM | stream | ELF sha (head) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| finite compact (control) | 7880 | 7842 | 38 | 1319 | 1357 | 1572 B | `4e97d8477a1dfef1` |
+| loop-capable (`ATM_FX_COMPACT_LOOP=1`, ring 32) | 8554 | 8516 | 38 | 1338 | 1376 | 40 B | `0378c846065268a5` |
+| loop-capable + DIAG | 9430 | 9388 | 42 | 1353 | 1395 | 40 B | `28b77e863fa598df` |
+
+Loop support costs **+674 B program / +19 B static SRAM** over the finite
+compact control. It is gated by `ATM_FX_COMPACT_LOOP` (default 0): the default
+library build is unchanged, and the hlh.1 music fixture rebuilt with no FX
+macros is **byte-identical** in `.text` to the retained ELF
+(`build/fx-port/loops/default_regression.txt`).
+
+### Not claimed
+
+Streaming loop wraps (a loop region that does not fit the ring) are rejected, not
+implemented. The authoring adapter `ATMlib2FX-3ii.3` still exports finite v1
+only; the loop extension is documented here for a later adapter. Game fit
+remains hlh.11.

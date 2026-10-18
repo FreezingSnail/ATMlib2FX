@@ -48,7 +48,9 @@
 #include <stdint.h>
 
 /* Music ring size (power of two). 32-byte target; judged by the spike. */
+#ifndef ATM_FX_COMPACT_RING
 #define ATM_FX_COMPACT_RING (32)
+#endif
 /* Largest foreground FX fetch per transaction (direct into the ring). */
 #define ATM_FX_COMPACT_CHUNK (16)
 
@@ -61,6 +63,14 @@
  * enabled builds carry the SFX state, reader code and PROGMEM asset reader. */
 #ifndef ATM_FX_COMPACT_SFX
 #define ATM_FX_COMPACT_SFX (0)
+#endif
+
+/* Global-loop streams (ATMlib2FX-hlh.8), magic 0xC1. Off by default so the
+ * finite build and its code size are unchanged; when enabled the decoder also
+ * accepts loop streams and replays the pinned loop region with no further
+ * fetch. Requires ATM_FX_COMPACT. */
+#ifndef ATM_FX_COMPACT_LOOP
+#define ATM_FX_COMPACT_LOOP (0)
 #endif
 
 #if (ATM_FX_COMPACT_RING & (ATM_FX_COMPACT_RING - 1)) != 0
@@ -89,6 +99,17 @@ struct atm_fx_compact_state {
 	uint8_t error;         /* sticky 1=format 2=oversize (0 = none) */
 	uint8_t paused;        /* music paused, position/live state kept */
 	uint8_t paused_vol[4]; /* saved music osc vols while paused  */
+#if ATM_FX_COMPACT_LOOP
+	/* --- global-loop stream state (ATMlib2FX-hlh.8) --- */
+	uint32_t stream_base;   /* absolute offset of the stream byte 0 */
+	uint32_t head_offset;   /* absolute stream offset of buf[head]  */
+	uint32_t loop_start;    /* absolute offset of the loop region   */
+	uint16_t loop_bytes;    /* loop region length in bytes          */
+	uint16_t loop_remaining;/* bytes left in the current loop pass  */
+	uint8_t loop_base;      /* ring index of the loop region start  */
+	uint8_t loopable;       /* stream is a 0xC1 loop stream         */
+	uint8_t loop_pinned;    /* loop region resident, no more fetch  */
+#endif
 #if ATM_FX_COMPACT_SFX
 	/* --- independent-tempo SFX overlay (PROGMEM compact stream) --- */
 	const uint8_t *sfx_ptr;   /* PROGMEM base of the SFX stream  */

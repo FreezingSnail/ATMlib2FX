@@ -22,7 +22,29 @@
  *
  * All integers little-endian, one byte each. Command bytes use the modern
  * ATMlib encoding (src/atm_cmd_constants.h). CALL/CALL_REPEAT/RETURN and
- * delays are resolved offline; SET_LOOP_PATTERN is rejected in finite v1.
+ * delays are resolved offline.
+ *
+ * Global-loop extension (ATMlib2FX-hlh.8, opt-in via
+ * `fx_encode_options.allow_loops`): when a score issues SET_LOOP_PATTERN and
+ * would restart the original engine's all-stopped loop, the encoder emits a
+ * loop-capable stream instead. The framing is identical except for the header:
+ *
+ *   byte 0xC1
+ *   u24 LE loop_start_rel   byte offset of the first loop-region record from
+ *                           byte 0 (>= the 4-byte header); records follow
+ *   then records until END (0x00); END is the loop boundary, not a stop.
+ *
+ * Record bitmap, loop mode only: bits 0..3 are the command channels; bits
+ * 4..7 are the restart mask. A non-zero restart mask means the record is the
+ * original engine's all-stopped pass: after applying it the decoder re-arms
+ * those channels in the same tick (the immediate second pass). A bitmap of 0
+ * is an effect-only pass (no commands, no restart).
+ *
+ * The loop region [loop_start_rel, stream_len-1) must fit the admission ring
+ * so a device can pin it and replay it with no further fetch (no underrun at
+ * the wrap). A region whose records all carry gap 0 would replay in a
+ * same-tick chain that never yields a tick, so it is rejected. Finite streams
+ * still start with 0xC0 and are byte-identical to the finite-v1 output.
  */
 #ifndef FX_ENCODE_H
 #define FX_ENCODE_H
@@ -38,6 +60,8 @@
 
 /* Detection/validation hook used by the host decoders. */
 #define FX_ENC_STREAM_MAGIC (0xC0u)
+#define FX_ENC_STREAM_MAGIC_LOOP (0xC1u)
+#define FX_ENC_LOOP_HEADER (4u) /* magic + u24 little-endian loop_start_rel */
 #define FX_ENC_STREAM_END (0x00u)
 
 struct fx_score_patterns {
@@ -54,6 +78,7 @@ struct fx_encode_options {
 	uint16_t ring;        /* admission ring size in bytes (default 32)   */
 	uint32_t tick_cap;    /* conversion tick cap (default 8192)          */
 	int tempo_override;   /* 0 = authored; else SET_TEMPO operand value  */
+	int allow_loops;      /* 0 = finite v1 (reject SET_LOOP_PATTERN)     */
 };
 
 struct fx_encode_meta {
@@ -66,6 +91,14 @@ struct fx_encode_meta {
 	uint32_t framing_bytes;   /* sum of record lengths (magic/END excluded)*/
 	uint32_t max_window[FX_ENC_MAX_WINDOW + 1]; /* 1..8 tick byte windows */
 	int64_t max_window_at[FX_ENC_MAX_WINDOW + 1]; /* first tick of window */
+	/* Global-loop extension (ATMlib2FX-hlh.8). All zero/negative when the
+	 * emitted stream is finite (magic 0xC0). */
+	int has_loop;
+	int32_t loop_start_offset; /* byte offset of the first loop record    */
+	uint32_t intro_ticks;      /* ticks before the loop region            */
+	uint32_t cycle_ticks;      /* loop period in ticks                    */
+	uint32_t intro_passes;     /* records before loop_start_offset        */
+	uint32_t loop_passes;      /* records in the loop region              */
 };
 
 struct fx_encode_result {

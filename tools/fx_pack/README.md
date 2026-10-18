@@ -9,7 +9,8 @@ source event.
 
 Contract and framing live in
 [`research/fx/fx-architecture-decision.md`](../../research/fx/fx-architecture-decision.md)
-(“hlh.6 review”). This tool emits **finite (non-looping, no-SFX) music only**.
+(“hlh.6 review”, “hlh.8: global loops”). This tool emits finite (non-looping,
+no-SFX) music by default, and loop-capable streams with `--loops`.
 
 ## Build
 
@@ -48,6 +49,7 @@ build/fx-port/pack/fx_pack --score-bin score.bin --out stream.bin
 | `--meta PATH` | Deterministic metadata JSON. |
 | `--input-bin PATH` | Write the extracted flat score (evidence). |
 | `--tempo N` | Replace `SET_TEMPO` operands (`0` = authored, default). |
+| `--loops` | Allow `SET_LOOP_PATTERN` and emit a loop-capable stream (magic `0xC1`, ATMlib2FX-hlh.8). Without it, global loops are rejected in finite v1. |
 | `--ticks N` | Conversion tick cap (default 8192). |
 | `--ring N` | Admission ring size (default 32, allowed 5..256). |
 | `--workdir DIR` | Probe scratch directory (default `build/fx-port/pack/work`). |
@@ -108,6 +110,41 @@ Long delays are scheduled as `operand + 1` (the original library semantics);
 the retained `song01_sfx` fixture uses only short delays, so this correction
 does not change its bytes. A gap larger than 65535 is rejected, not truncated.
 
+### Loop streams (`--loops`, ATMlib2FX-hlh.8)
+
+When `--loops` is set and the score issues `SET_LOOP_PATTERN`, the encoder
+simulates the original all-stopped restart and emits a loop-capable stream:
+
+```
+byte 0  0xC1
+u24 LE loop_start_rel     byte offset of the first loop-region record
+then records until END (0x00); END is the loop boundary, not a stop
+```
+
+Records use the finite framing with two loop-mode changes:
+
+* **gap field.** `0` means the next record runs in the **same** tick (the
+  original's immediate second pass); otherwise the value is
+  `effect-only ticks + 1`.
+* **bitmap.** bits 0..3 are the command channels; bits 4..7 are the restart
+  mask. A non-zero restart mask marks the original's all-stopped pass: after
+  applying it the device re-arms those channels in the same tick. A bitmap of
+  `0` (no channels, no restart) is an effect-only pass.
+
+The loop region `[loop_start_rel, stream_len-1)` is found by traversal-cycle
+detection on the post-restart state; it must fit the admission ring so the
+device can pin and replay it with no further fetch (no underrun at the wrap).
+A cycle that advances no ticks (a restart that stops again immediately) is
+rejected as a zero-time cycle, and a traversal that never becomes periodic
+within the tick cap is rejected. A loop region whose records all carry gap 0
+is rejected too: replaying it would stay in the same-tick chain and never
+yield a tick. The device additionally bounds that chain at one region wrap per
+tick, so crafted bytes stop with a format error instead of hanging.
+`SET_LOOP_PATTERN` operand 0 is a legal target (the engine reserves 255 as the
+no-loop marker); operand 255 and out-of-range targets are rejected.
+
+Finite (`0xC0`) output is byte-identical to hlh.7; loops are opt-in.
+
 ## Metadata JSON
 
 Deterministic key order, integers only:
@@ -161,11 +198,20 @@ The shell driver also converts both example scores, asserts the retained
 (`0e8432ac…` authored, `b7702512…` tempo 255), checks determinism, and decodes
 both streams to END. Evidence lands under `build/fx-port/pack/`.
 
+`tests/fx_pack/fx_loop_selftest.c` (compiled with `ATM_FX_COMPACT_LOOP=1`)
+covers the loop extension: zero-time-cycle and non-periodic-traversal
+rejection, `SET_LOOP_PATTERN` operand bounds, loop-region ring limits, loop
+stream validation (header extent, record-boundary `loop_start_rel`,
+truncation, all-gap-0 rejection), a device-decoder intro/loop restart
+round-trip, and the same-tick wrap bound (a crafted all-gap-0 stream errors and
+stops instead of hanging).
+
 ## Not covered
 
-Global loop synchronization and loop targets (`ATMlib2FX-hlh.8`),
-pause/replacement/SFX (`ATMlib2FX-hlh.9`), the general authoring input matrix,
-packing tooling and game fit (`ATMlib2FX-hlh.10`/`.11`). A stream is shippable
-only if its measured worst service window fits the ring; the converter reports
-the window but does not reject a stream whose per-record lengths fit while a
-multi-tick window does not (that is a deployment decision).
+Pause/replacement/SFX (`ATMlib2FX-hlh.9`, implemented in the device backend),
+the general authoring input matrix, packing tooling and game fit
+(`ATMlib2FX-hlh.10`/`.11`). A stream is shippable only if its measured worst
+service window fits the ring; the converter reports the window but does not
+reject a stream whose per-record lengths fit while a multi-tick window does not
+(that is a deployment decision). Loop streams additionally require the whole
+loop region to fit the ring; larger loops (streaming wraps) are out of scope.

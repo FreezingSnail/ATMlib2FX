@@ -41,12 +41,14 @@ static void usage(FILE *f)
 	fprintf(f,
 		"usage: fx_pack --song <score.h> [--symbol NAME] --out <stream.bin>\n"
 		"               [--meta <meta.json>] [--input-bin <flat.bin>]\n"
-		"               [--tempo N] [--ticks N] [--ring N]\n"
+		"               [--tempo N] [--ticks N] [--ring N] [--loops]\n"
 		"               [--format auto|modern|legacy]\n"
 		"               [--workdir DIR] [--cc PATH]\n"
 		"       fx_pack --score-bin <flat_score.bin> --out <stream.bin> [...]\n"
 		"\n"
 		"  --tempo N     override SET_TEMPO operand (0 = authored, default)\n"
+		"  --loops       allow SET_LOOP_PATTERN and emit a loop-capable stream\n"
+		"                (default: finite v1, SET_LOOP_PATTERN rejected)\n"
 		"  --ticks N     conversion tick cap (default %d)\n"
 		"  --ring N      admission ring size in bytes (default %d)\n"
 		"  --symbol NAME top-level score object in the header (default: score,\n"
@@ -443,7 +445,10 @@ static int write_meta(const char *path, const char *input_path,
 
 	fprintf(f, "{\n");
 	fprintf(f, "  \"tool\": \"fx_pack\",\n");
-	fprintf(f, "  \"contract\": \"finite-v1 compact directly-consumed stream\",\n");
+	fprintf(f, "  \"contract\": \"%s\",\n",
+		res->meta.has_loop
+			? "loop-capable compact directly-consumed stream"
+			: "finite-v1 compact directly-consumed stream");
 	fprintf(f, "  \"input\": {\n");
 	fprintf(f, "    \"path\": \"");
 	json_escape(f, input_path ? input_path : "");
@@ -475,6 +480,17 @@ static int write_meta(const char *path, const char *input_path,
 	fprintf(f, "    \"max_record\": %u,\n", (unsigned)res->meta.max_record);
 	fprintf(f, "    \"framing_bytes\": %u,\n",
 		(unsigned)res->meta.framing_bytes);
+	fprintf(f, "    \"has_loop\": %d,\n", res->meta.has_loop);
+	fprintf(f, "    \"loop_start_offset\": %d,\n",
+		(int)res->meta.loop_start_offset);
+	fprintf(f, "    \"intro_ticks\": %u,\n",
+		(unsigned)res->meta.intro_ticks);
+	fprintf(f, "    \"cycle_ticks\": %u,\n",
+		(unsigned)res->meta.cycle_ticks);
+	fprintf(f, "    \"intro_passes\": %u,\n",
+		(unsigned)res->meta.intro_passes);
+	fprintf(f, "    \"loop_passes\": %u,\n",
+		(unsigned)res->meta.loop_passes);
 	fprintf(f, "    \"window_bytes\": {");
 	for (int k = 1; k <= FX_ENC_MAX_WINDOW; k++)
 		fprintf(f, "%s\"%d\": %u", k == 1 ? "" : ", ", k,
@@ -509,6 +525,7 @@ int main(int argc, char **argv)
 	const char *cc = getenv("CC");
 	int format = FX_SCORE_AUTO;
 	int tempo = 0;
+	int loops = 0;
 	long ticks = FX_ENC_DEFAULT_TICKS;
 	long ring = FX_ENC_DEFAULT_RING;
 	uint8_t *input = NULL;
@@ -539,6 +556,8 @@ int main(int argc, char **argv)
 			input_bin = argv[++i];
 		} else if (!strcmp(argv[i], "--tempo") && i + 1 < argc) {
 			tempo = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--loops")) {
+			loops = 1;
 		} else if (!strcmp(argv[i], "--ticks") && i + 1 < argc) {
 			ticks = atol(argv[++i]);
 		} else if (!strcmp(argv[i], "--ring") && i + 1 < argc) {
@@ -583,6 +602,7 @@ int main(int argc, char **argv)
 	opt.ring = (uint16_t)ring;
 	opt.tick_cap = (uint32_t)ticks;
 	opt.tempo_override = tempo;
+	opt.allow_loops = loops;
 
 	if (song) {
 		if (extract_song(song, symbol, cc, workdir, &input, &input_len,
@@ -646,14 +666,16 @@ int main(int argc, char **argv)
 	fprintf(stderr,
 		"fx_pack: input=%s format=%s ticks=%u stopped_at=%d "
 		"stream_bytes=%zu passes=%u payload_bytes=%u max_group=%u "
-		"max_record=%u framing_bytes=%u tempo=%s rings=%u -> %s\n",
+		"max_record=%u framing_bytes=%u tempo=%s rings=%u loop=%s "
+		"-> %s\n",
 		song ? song : score_bin, score.format_name,
 		(unsigned)res.meta.ticks_span, (int)res.meta.stopped_at,
 		res.stream_len, (unsigned)res.meta.passes,
 		(unsigned)res.meta.payload_bytes,
 		(unsigned)res.meta.max_group, (unsigned)res.meta.max_record,
 		(unsigned)res.meta.framing_bytes,
-		tempo ? "override" : "authored", (unsigned)opt.ring, out_path);
+		tempo ? "override" : "authored", (unsigned)opt.ring,
+		res.meta.has_loop ? "yes" : "no", out_path);
 
 	printf("window_bytes");
 	for (int k = 1; k <= FX_ENC_MAX_WINDOW; k++)

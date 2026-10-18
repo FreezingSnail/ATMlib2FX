@@ -74,7 +74,8 @@ static void atm_fx_compact_run_effects(void)
  * preflights structure (no effect/command/oscillator mutation); when apply != 0
  * it runs effects and commands in the original channel order. Returns the
  * record length, or a negative error code. */
-static int16_t atm_fx_compact_walk(const uint8_t apply, uint16_t *gap_out)
+static int16_t atm_fx_compact_walk(const uint8_t apply, uint16_t *gap_out,
+				   uint8_t *restart_out)
 {
 	const uint8_t len = atm_fx_compact_read(0);
 	uint8_t pos = 1;
@@ -93,8 +94,26 @@ static int16_t atm_fx_compact_walk(const uint8_t apply, uint16_t *gap_out)
 	}
 	if (pos >= len) return -1;
 
-	const uint8_t bitmap = atm_fx_compact_read(pos++);
-	if (bitmap == 0 || (bitmap & 0xF0)) return -1;
+	const uint8_t raw = atm_fx_compact_read(pos++);
+	const uint8_t bitmap = raw & 0x0F;
+	if (restart_out) *restart_out = (uint8_t)(raw >> 4);
+	if (raw & 0xF0) {
+#if ATM_FX_COMPACT_LOOP
+		/* Loop streams use bits 4..7 as the all-stopped restart mask. */
+		if (!atm_fx_compact_state.loopable) return -1;
+#else
+		return -1;
+#endif
+	}
+	if (bitmap == 0) {
+#if ATM_FX_COMPACT_LOOP
+		/* Loop streams may carry an effect-only pass (no groups): its
+		 * per-channel process_fx above is the original's extra pass. */
+		if (!atm_fx_compact_state.loopable) return -1;
+#else
+		return -1;
+#endif
+	}
 
 	for (uint8_t ch_index = 0; ch_index < OSC_CH_COUNT; ch_index++) {
 		struct atm_channel_state *ch = &channels[ch_index];
@@ -213,73 +232,179 @@ static void atm_fx_compact_tick_handler(uint8_t cb_index, void *priv)
 		return;
 	}
 
-	/* Pass tick. Preflight the complete record before any mutation. */
-	const uint8_t avail = (uint8_t)(
-		atm_fx_compact_state.tail - atm_fx_compact_state.head);
-
-	if (avail < 1) {
-#if ATM_FX_COMPACT_DIAG
-		atm_fx_compact_state.underruns++;
+	/* Pass tick. Multiple records may share one tick (loop-mode extra
+	 * passes, signalled by a gap field of 0); chain them here. */
+#if ATM_FX_COMPACT_LOOP
+	/* A valid loop region always contains a record with a non-zero gap,
+	 * so a same-tick chain wraps the region at most once. A second wrap
+	 * could never yield a tick: bound and reject it so crafted bytes
+	 * cannot hang the device. */
+	uint8_t wraps = 0;
 #endif
-		return; /* freeze: no effect or tick state advances */
-	}
-
-	const uint8_t rec_len = atm_fx_compact_read(0);
-
-	if (rec_len == 0) {
-		/* END: finite completion. */
-		atm_fx_compact_stop();
-#if ATM_FX_COMPACT_DIAG
-		atm_fx_compact_state.stop_tick = atm_fx_compact_state.ticks;
+	for (;;) {
+#if ATM_FX_COMPACT_LOOP
+		if (atm_fx_compact_state.loopable &&
+		    atm_fx_compact_state.loop_pinned &&
+		    atm_fx_compact_state.loop_remaining == 0) {
+			/* loop region fully consumed: wrap in the same tick */
+			if (wraps++ != 0) {
+				atm_fx_compact_state.error = 1;
+				atm_fx_compact_stop();
+				return;
+			}
+			atm_fx_compact_state.head = atm_fx_compact_state.loop_base;
+			atm_fx_compact_state.loop_remaining =
+				atm_fx_compact_state.loop_bytes;
+		}
+		if (atm_fx_compact_state.loopable &&
+		    !atm_fx_compact_state.loop_pinned &&
+		    atm_fx_compact_state.head_offset ==
+				atm_fx_compact_state.loop_start) {
+			/* Whole loop region is resident. Pin it: stop fetching
+			 * and replay it in place, so the wrap costs no
+			 * foreground read and cannot underrun. */
+			atm_fx_compact_state.loop_base =
+				atm_fx_compact_state.head;
+			atm_fx_compact_state.loop_remaining =
+				atm_fx_compact_state.loop_bytes;
+			atm_fx_compact_state.loop_pinned = 1;
+			atm_fx_compact_state.next_offset =
+				atm_fx_compact_state.stream_end;
+		}
 #endif
+		const uint8_t avail = (uint8_t)(
+			atm_fx_compact_state.tail - atm_fx_compact_state.head);
+
+		if (avail < 1) {
+#if ATM_FX_COMPACT_DIAG
+			atm_fx_compact_state.underruns++;
+#endif
+			return; /* freeze: no effect or tick state advances */
+		}
+
+		const uint8_t rec_len = atm_fx_compact_read(0);
+
+		if (rec_len == 0) {
+#if ATM_FX_COMPACT_LOOP
+			if (atm_fx_compact_state.loopable) {
+				/* END is the loop boundary: replay the loop
+				 * region in this same tick. */
+				if (wraps++ != 0) {
+					atm_fx_compact_state.error = 1;
+					atm_fx_compact_stop();
+					return;
+				}
+				atm_fx_compact_state.head =
+					atm_fx_compact_state.loop_base;
+				atm_fx_compact_state.loop_remaining =
+					atm_fx_compact_state.loop_bytes;
+				continue;
+			}
+#endif
+			/* END: finite completion. */
+			atm_fx_compact_stop();
+#if ATM_FX_COMPACT_DIAG
+			atm_fx_compact_state.stop_tick =
+				atm_fx_compact_state.ticks;
+#endif
+			return;
+		}
+		{
+			uint8_t min_len = 5;
+#if ATM_FX_COMPACT_LOOP
+			if (atm_fx_compact_state.loopable) min_len = 3;
+#endif
+			if (rec_len < min_len || rec_len > ATM_FX_COMPACT_RING) {
+				atm_fx_compact_state.error = 2; /* oversize */
+				atm_fx_compact_stop();
+				return;
+			}
+		}
+		if (avail < rec_len) {
+#if ATM_FX_COMPACT_DIAG
+			atm_fx_compact_state.underruns++;
+#endif
+			return; /* freeze: whole record is not yet resident */
+		}
+
+		if (atm_fx_compact_walk(0, NULL, NULL) != (int16_t)rec_len) {
+			atm_fx_compact_state.error = 1; /* malformed */
+			atm_fx_compact_stop();
+			return;
+		}
+
+		uint16_t next_gap = 0;
+		uint8_t restart_mask = 0;
+		(void)atm_fx_compact_walk(1, &next_gap, &restart_mask);
+
+		/* Publish consumption of the pinned record. */
+		atm_fx_compact_state.head =
+			(uint8_t)(atm_fx_compact_state.head + rec_len);
+
+#if ATM_FX_COMPACT_LOOP
+		if (atm_fx_compact_state.loopable) {
+			atm_fx_compact_state.head_offset += rec_len;
+			if (atm_fx_compact_state.loop_pinned) {
+				atm_fx_compact_state.loop_remaining =
+					(uint16_t)(atm_fx_compact_state.loop_remaining -
+						   rec_len);
+			}
+			if (restart_mask) {
+				/* This was the original engine's all-stopped
+				 * pass: re-arm its looping channels in this
+				 * same tick, before the restart pass that
+				 * follows. */
+				atmlib_state.channel_active_mute =
+					(uint8_t)((atmlib_state.channel_active_mute & 0x0F) |
+					(uint8_t)(restart_mask << OSC_CH_COUNT));
+			}
+		}
+#endif
+
+#if ATM_FX_COMPACT_DIAG
+		if (rec_len > atm_fx_compact_state.max_record) {
+			atm_fx_compact_state.max_record = rec_len;
+		}
+		{
+			const uint16_t w = (uint16_t)atm_fx_compact_state.window +
+					   rec_len;
+			atm_fx_compact_state.window =
+				w > 0xFF ? 0xFF : (uint8_t)w;
+		}
+		if (atm_fx_compact_state.window >
+		    atm_fx_compact_state.max_window) {
+			atm_fx_compact_state.max_window =
+				atm_fx_compact_state.window;
+		}
+#endif
+
+#if ATM_FX_COMPACT_LOOP
+		if (atm_fx_compact_state.loopable) {
+			if (next_gap == 0) {
+				continue; /* extra pass at the same tick */
+			}
+			atm_fx_compact_state.gap = (uint16_t)(next_gap - 1);
+			return;
+		}
+#endif
+		atm_fx_compact_state.gap = next_gap;
+
+		/* Match the original score handler: stop as soon as no voice is
+		 * active. Loop streams never stop here; their restart is applied
+		 * after the loop region's first record (above). */
+		if (!(atmlib_state.channel_active_mute & 0xF0)) {
+#if ATM_FX_COMPACT_LOOP
+			if (!atm_fx_compact_state.loopable)
+#endif
+			{
+				atm_fx_compact_stop();
+#if ATM_FX_COMPACT_DIAG
+				atm_fx_compact_state.stop_tick =
+					atm_fx_compact_state.ticks;
+#endif
+			}
+		}
 		return;
-	}
-	if (rec_len < 5 || rec_len > ATM_FX_COMPACT_RING) {
-		atm_fx_compact_state.error = 2; /* oversize / impossible */
-		atm_fx_compact_stop();
-		return;
-	}
-	if (avail < rec_len) {
-#if ATM_FX_COMPACT_DIAG
-		atm_fx_compact_state.underruns++;
-#endif
-		return; /* freeze: whole record is not yet resident */
-	}
-
-	if (atm_fx_compact_walk(0, NULL) != (int16_t)rec_len) {
-		atm_fx_compact_state.error = 1; /* malformed */
-		atm_fx_compact_stop();
-		return;
-	}
-
-	uint16_t next_gap = 0;
-	(void)atm_fx_compact_walk(1, &next_gap);
-
-	/* Publish consumption of the pinned record. */
-	atm_fx_compact_state.head =
-		(uint8_t)(atm_fx_compact_state.head + rec_len);
-
-#if ATM_FX_COMPACT_DIAG
-	if (rec_len > atm_fx_compact_state.max_record) {
-		atm_fx_compact_state.max_record = rec_len;
-	}
-	{
-		const uint16_t w = (uint16_t)atm_fx_compact_state.window + rec_len;
-		atm_fx_compact_state.window = w > 0xFF ? 0xFF : (uint8_t)w;
-	}
-	if (atm_fx_compact_state.window > atm_fx_compact_state.max_window) {
-		atm_fx_compact_state.max_window = atm_fx_compact_state.window;
-	}
-#endif
-
-	atm_fx_compact_state.gap = next_gap;
-
-	/* Match the original score handler: stop as soon as no voice is active. */
-	if (!(atmlib_state.channel_active_mute & 0xF0)) {
-		atm_fx_compact_stop();
-#if ATM_FX_COMPACT_DIAG
-		atm_fx_compact_state.stop_tick = atm_fx_compact_state.ticks;
-#endif
 	}
 }
 
@@ -491,16 +616,63 @@ void atm_fx_compact_play(uint32_t offset, uint32_t length)
 	atmlib_state.channel_active_mute = 0b11110000;
 	atmlib_state.tick_rate = 25;
 
+	uint32_t next_offset = offset + 1;
+#if ATM_FX_COMPACT_LOOP
+	/* A loop stream (magic 0xC1) carries a 4-byte header: magic plus the
+	 * u24 little-endian loop_start_rel. The restart channel mask lives in
+	 * bits 4..7 of each record's bitmap (parsed per record by the walker).
+	 * Reading the header here keeps the timer free of header handling. */
+	uint32_t lstart = 0;
+	uint16_t lbytes = 0;
+	uint8_t loopable = 0;
+	uint8_t bad = 0;
+	{
+		uint8_t magic = 0;
+		atm_fx_compact_fetch(offset, &magic, 1);
+		if (magic == 0xC1) {
+			uint8_t hdr[4];
+			if (length < 5) {
+				bad = 1;
+			} else {
+				atm_fx_compact_fetch(offset, hdr, 4);
+				const uint32_t ls = (uint32_t)hdr[1] |
+					((uint32_t)hdr[2] << 8) |
+					((uint32_t)hdr[3] << 16);
+				if (ls < 4 || ls > length - 2 ||
+				    (length - 1) - ls == 0 ||
+				    (uint32_t)(length - 1) - ls > ATM_FX_COMPACT_RING) {
+					bad = 1;
+				} else {
+					loopable = 1;
+					lstart = offset + ls;
+					lbytes = (uint16_t)((length - 1) - ls);
+					next_offset = offset + 4;
+				}
+			}
+		}
+	}
+#endif
+
 	ATM_FX_COMPACT_ATOMIC {
 		atm_fx_compact_state.head = 0;
 		atm_fx_compact_state.tail = 0;
-		/* byte 0 is the compact magic/version header, skipped by the decoder */
-		atm_fx_compact_state.next_offset = offset + 1;
+		/* byte 0 is the compact magic/version header, skipped here */
+		atm_fx_compact_state.next_offset = next_offset;
 		atm_fx_compact_state.stream_end = offset + length;
 		atm_fx_compact_state.active = 1;
 		atm_fx_compact_state.paused = 0;
 		atm_fx_compact_state.gap = 0;
 		atm_fx_compact_state.error = 0;
+#if ATM_FX_COMPACT_LOOP
+		atm_fx_compact_state.stream_base = offset;
+		atm_fx_compact_state.head_offset = next_offset;
+		atm_fx_compact_state.loopable = loopable;
+		atm_fx_compact_state.loop_start = lstart;
+		atm_fx_compact_state.loop_bytes = lbytes;
+		atm_fx_compact_state.loop_pinned = 0;
+		atm_fx_compact_state.loop_base = 0;
+		atm_fx_compact_state.loop_remaining = 0;
+#endif
 #if ATM_FX_COMPACT_DIAG
 		atm_fx_compact_state.ticks = 0;
 		atm_fx_compact_state.underruns = 0;
@@ -518,6 +690,14 @@ void atm_fx_compact_play(uint32_t offset, uint32_t length)
 	 * unregistered, so SPI runs with sample interrupts enabled and the timer
 	 * cannot observe a partial ring. */
 	atm_fx_compact_fill();
+
+#if ATM_FX_COMPACT_LOOP
+	if (bad) {
+		atm_fx_compact_state.error = 1;
+		atm_fx_compact_stop();
+		return;
+	}
+#endif
 
 	osc_set_tick_rate(0, atmlib_state.tick_rate);
 	ATM_FX_COMPACT_ATOMIC {

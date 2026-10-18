@@ -43,7 +43,8 @@ echo "cc   : $($CC --version 2>/dev/null | head -1)"
   for f in \
     tools/fx_pack/fx_pack.c tools/fx_pack/fx_score.c tools/fx_pack/fx_encode.c \
     tools/fx_pack/fx_score.h tools/fx_pack/fx_encode.h tools/fx_pack/Makefile \
-    tests/fx_pack/fx_pack_selftest.c tests/fx_pack/run-tests.sh \
+    tests/fx_pack/fx_pack_selftest.c tests/fx_pack/fx_loop_selftest.c \
+    tests/fx_pack/run-tests.sh \
     "$SONG_SFX" "$SONG_01"; do
     shasum -a 256 "$f" | sed "s#  #  #"
   done
@@ -54,9 +55,15 @@ make -C tools/fx_pack CC="$CC" > "$OUT/build.log"
 "$CC" -std=c11 -O1 -w -I"$SHIM" -Isrc -Itools/fx_pack \
   tests/fx_pack/fx_pack_selftest.c tools/fx_pack/fx_encode.c \
   tools/fx_pack/fx_score.c -o "$OUT/fx_pack_selftest"
+"$CC" -std=c11 -O1 -w -I"$SHIM" -Isrc -Itools/fx_pack \
+  tests/fx_pack/fx_loop_selftest.c tools/fx_pack/fx_encode.c \
+  tools/fx_pack/fx_score.c -o "$OUT/fx_loop_selftest"
 
 # ---- C selftest ------------------------------------------------------------
 "$OUT/fx_pack_selftest" | tee "$OUT/selftest.log"
+
+# ---- loop selftest (ATMlib2FX-hlh.8) --------------------------------------
+"$OUT/fx_loop_selftest" | tee "$OUT/loop_selftest.log"
 
 # ---- conversion helper -----------------------------------------------------
 convert() { # name song symbol extra...
@@ -119,6 +126,7 @@ decode song01_sfx_t255 "$OUT/song01_sfx_t255/stream.bin"
 {
   echo "# fx_pack verification (ATMlib2FX-hlh.7)"
   echo "selftest=$(grep -c '^ok:' "$OUT/selftest.log") checks passed"
+  echo "loop_selftest=$(grep -c '^ok:' "$OUT/loop_selftest.log") checks passed"
   echo "determinism=$DET"
   echo "song01_sfx_stream_sha256=$HASH_SFX"
   echo "song01_sfx_stream_matches_retained=yes"

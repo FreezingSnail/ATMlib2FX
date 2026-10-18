@@ -102,6 +102,7 @@ struct chan {
 	uint8_t sp;
 	uint32_t delay;   /* 32-bit so operand 0xFFFF + 1 schedules 65536     */
 	uint8_t active;
+	uint8_t loop;     /* SET_LOOP_PATTERN target; 255 = no loop           */
 };
 
 static const uint8_t *pattern_start(const struct fx_score_patterns *sc,
@@ -116,6 +117,7 @@ static void chan_reset(const struct fx_score_patterns *sc, struct chan *c,
 	memset(c, 0, sizeof(*c));
 	c->sp = 0;
 	c->active = 1;
+	c->loop = 255;
 	c->stack[0].cmd = pattern_start(sc, entry);
 	c->stack[0].pattern = entry;
 	c->stack[0].rep = 0;
@@ -148,7 +150,7 @@ static void mark_first(uint16_t n, size_t off, uint8_t pattern,
  * Returns 0 on success, -1 on an admission failure with a source diagnostic. */
 static int step_channel(const struct fx_score_patterns *sc, struct chan *c,
 			int chidx, uint8_t *out, uint16_t *out_len,
-			int tempo_override, uint8_t *first_pattern,
+			int tempo_override, int allow_loops, uint8_t *first_pattern,
 			uint32_t *first_offset, char *err, size_t errlen)
 {
 	uint16_t n = 0;
@@ -263,9 +265,27 @@ static int step_channel(const struct fx_score_patterns *sc, struct chan *c,
 					ps->cmd = advanced;
 				}
 			} else if (cid == ATM_CMD_NP_SET_LOOP_PATTERN) {
-				return fail_event(err, errlen,
-					"SET_LOOP_PATTERN is not supported in finite v1",
-					chidx, ps->pattern, off, id);
+				if (!allow_loops) {
+					return fail_event(err, errlen,
+						"SET_LOOP_PATTERN is not supported in finite v1",
+						chidx, ps->pattern, off, id);
+				}
+				/* traversal only: the original stores the target
+				 * as loop_pattern_index; 255 is reserved as the
+				 * no-loop marker, so 0 is a legal target. */
+				const uint8_t target = cmd_ptr[1];
+				if (target == 255) {
+					return fail_event(err, errlen,
+						"SET_LOOP_PATTERN target 255 is reserved as the no-loop marker",
+						chidx, ps->pattern, off, id);
+				}
+				if (target >= sc->num_patterns) {
+					return fail_event(err, errlen,
+						"SET_LOOP_PATTERN target pattern is out of range",
+						chidx, ps->pattern, off, id);
+				}
+				c->loop = target;
+				ps->cmd = advanced;
 			} else if (cid == ATM_CMD_NP_LONG_DELAY) {
 				/* traversal only. The original library stores
 				 * operand+1, so the reschedule count is v+1. */
@@ -321,6 +341,7 @@ static int bytes_reserve(struct bytes *b, size_t extra)
 struct pass {
 	uint32_t tick;
 	uint8_t bitmap;
+	uint8_t restart_mask; /* loop mode: re-arm these after this pass */
 	uint8_t glen[FX_ENC_CHANNELS];
 	size_t goff[FX_ENC_CHANNELS];
 	uint8_t src_pattern[FX_ENC_CHANNELS];
@@ -381,19 +402,50 @@ int fx_stream_validate(const uint8_t *stream, size_t len, uint16_t ring,
 		       char *err, size_t errlen)
 {
 	size_t pos;
+	int loop_mode = 0;
+	uint32_t loop_start_rel = 0;
+	int seen_loop_start = 1;
+	int loop_gap_seen = 0;
 
 	if (!stream || len < 2) {
 		if (err) snprintf(err, errlen, "stream is too short (%zu bytes)", len);
 		return -1;
 	}
-	if (stream[0] != FX_ENC_STREAM_MAGIC) {
+	if (stream[0] == FX_ENC_STREAM_MAGIC) {
+		pos = 1;
+	} else if (stream[0] == FX_ENC_STREAM_MAGIC_LOOP) {
+		if (len < FX_ENC_LOOP_HEADER + 2) {
+			if (err) snprintf(err, errlen,
+				"loop stream is too short (%zu bytes)", len);
+			return -1;
+		}
+		loop_mode = 1;
+		loop_start_rel = (uint32_t)stream[1] |
+			((uint32_t)stream[2] << 8) | ((uint32_t)stream[3] << 16);
+		if (loop_start_rel < FX_ENC_LOOP_HEADER ||
+		    loop_start_rel > len - 2) {
+			if (err) snprintf(err, errlen,
+				"loop_start_rel 0x%04X is outside the %zu-byte stream",
+				(unsigned)loop_start_rel, len);
+			return -1;
+		}
+		if ((uint32_t)(len - 1) - loop_start_rel > ring) {
+			if (err) snprintf(err, errlen,
+				"loop region is %u bytes > ring %u",
+				(unsigned)((uint32_t)(len - 1) - loop_start_rel),
+				(unsigned)ring);
+			return -1;
+		}
+		pos = FX_ENC_LOOP_HEADER;
+		seen_loop_start = (loop_start_rel == pos);
+	} else {
 		if (err) snprintf(err, errlen,
-			"bad stream magic 0x%02X (expected 0x%02X)",
-			(unsigned)stream[0], (unsigned)FX_ENC_STREAM_MAGIC);
+			"bad stream magic 0x%02X (expected 0x%02X or 0x%02X)",
+			(unsigned)stream[0], (unsigned)FX_ENC_STREAM_MAGIC,
+			(unsigned)FX_ENC_STREAM_MAGIC_LOOP);
 		return -1;
 	}
 
-	pos = 1;
 	while (pos < len) {
 		const uint8_t *rec = stream + pos;
 		uint8_t reclen = rec[0];
@@ -406,12 +458,25 @@ int fx_stream_validate(const uint8_t *stream, size_t len, uint16_t ring,
 					"the end of the stream", pos);
 				return -1;
 			}
+			if (loop_mode && !seen_loop_start) {
+				if (err) snprintf(err, errlen,
+					"loop_start_rel 0x%04X is not a record "
+					"boundary", (unsigned)loop_start_rel);
+				return -1;
+			}
+			if (loop_mode && !loop_gap_seen) {
+				if (err) snprintf(err, errlen,
+					"loop region has no non-zero gap: its "
+					"records replay in a same-tick chain "
+					"that never yields a tick");
+				return -1;
+			}
 			return 0;
 		}
-		if (reclen < 5) {
+		if (loop_mode ? (reclen < 3) : (reclen < 5)) {
 			if (err) snprintf(err, errlen,
-				"record length %u < 5 at stream offset 0x%04zX",
-				(unsigned)reclen, pos);
+				"record length %u < %d at stream offset 0x%04zX",
+				(unsigned)reclen, loop_mode ? 3 : 5, pos);
 			return -1;
 		}
 		if (reclen > ring) {
@@ -435,24 +500,34 @@ int fx_stream_validate(const uint8_t *stream, size_t len, uint16_t ring,
 			return -1;
 		}
 		p += used;
+		if (loop_mode && pos >= loop_start_rel && gap != 0)
+			loop_gap_seen = 1;
 		if (p >= reclen) {
 			if (err) snprintf(err, errlen,
 				"record at stream offset 0x%04zX has no bitmap", pos);
 			return -1;
 		}
 		{
-			uint8_t bitmap = rec[p++];
-			if (bitmap == 0) {
-				if (err) snprintf(err, errlen,
-					"record bitmap 0 (nonprogressing) at "
-					"stream offset 0x%04zX", pos);
-				return -1;
-			}
-			if (bitmap & 0xF0) {
-				if (err) snprintf(err, errlen,
-					"record bitmap 0x%02X > 15 at stream "
-					"offset 0x%04zX", (unsigned)bitmap, pos);
-				return -1;
+			uint8_t raw = rec[p++];
+			uint8_t bitmap;
+			if (loop_mode) {
+				/* bits 4..7 are the restart mask; channels 0..3
+				 * are bits 0..3. */
+				bitmap = raw & 0x0F;
+			} else {
+				if (raw == 0) {
+					if (err) snprintf(err, errlen,
+						"record bitmap 0 (nonprogressing) at "
+						"stream offset 0x%04zX", pos);
+					return -1;
+				}
+				if (raw & 0xF0) {
+					if (err) snprintf(err, errlen,
+						"record bitmap 0x%02X > 15 at stream "
+						"offset 0x%04zX", (unsigned)raw, pos);
+					return -1;
+				}
+				bitmap = raw;
 			}
 			for (uint8_t ch = 0; ch < FX_ENC_CHANNELS; ch++) {
 				if (!(bitmap & (1u << ch))) continue;
@@ -508,6 +583,7 @@ int fx_stream_validate(const uint8_t *stream, size_t len, uint16_t ring,
 			}
 		}
 		pos += reclen;
+		if (loop_mode && pos == loop_start_rel) seen_loop_start = 1;
 	}
 
 	if (err) snprintf(err, errlen, "stream has no END record");
@@ -521,6 +597,35 @@ static int set_result_error(struct fx_encode_result *out, const char *msg)
 {
 	snprintf(out->error, sizeof(out->error), "%s", msg);
 	return -1;
+}
+
+/* Post-restart snapshot for global-loop cycle detection. The original's
+ * all-stopped restart re-arms each looping channel at its loop pattern; two
+ * restarts with identical post-restart traversal state produce identical
+ * subsequent behaviour, so the first repeat in this log is the loop period. */
+struct restartrec {
+	long tick;
+	uint64_t hash;
+	uint8_t mask;
+	struct chan state[FX_ENC_CHANNELS];
+};
+
+static uint64_t chan_hash(const struct chan c[FX_ENC_CHANNELS])
+{
+	uint64_t h = 1469598103934665603ULL;
+	for (int i = 0; i < FX_ENC_CHANNELS; i++) {
+		const struct chan *p = &c[i];
+		h ^= (uint64_t)p->sp; h *= 1099511628211ULL;
+		h ^= (uint64_t)p->delay; h *= 1099511628211ULL;
+		h ^= (uint64_t)p->active; h *= 1099511628211ULL;
+		h ^= (uint64_t)p->loop; h *= 1099511628211ULL;
+		for (int s = 0; s < PATTERN_STACK_DEPTH; s++) {
+			h ^= (uint64_t)(uintptr_t)p->stack[s].cmd; h *= 1099511628211ULL;
+			h ^= (uint64_t)p->stack[s].pattern; h *= 1099511628211ULL;
+			h ^= (uint64_t)p->stack[s].rep; h *= 1099511628211ULL;
+		}
+	}
+	return h;
 }
 
 int fx_encode(const struct fx_score_patterns *sc,
@@ -540,6 +645,15 @@ int fx_encode(const struct fx_score_patterns *sc,
 	uint32_t framing_total = 0;
 	int stopped_at = -1;
 	int rc = -1;
+	int allow_loops;
+	/* Global-loop detection/serialization (ATMlib2FX-hlh.8). */
+	struct restartrec *rl = NULL;
+	size_t nrl = 0, caprl = 0;
+	int has_loop = 0;
+	long loop_start_tick = -1;
+	long loop_period = 0, target_end_tick = -1;
+	size_t loop_pass_first = 0;
+	uint32_t loop_start_rel = 0;
 
 	memset(out, 0, sizeof(*out));
 	memset(&passes, 0, sizeof(passes));
@@ -585,6 +699,7 @@ int fx_encode(const struct fx_score_patterns *sc,
 		return set_result_error(out,
 			"ring must be in [5, 256] (finite-v1 admission limit)");
 	}
+	allow_loops = opt->allow_loops;
 
 	tick_bytes = calloc((size_t)tick_cap + 1, 1);
 	if (!tick_bytes) return set_result_error(out, "out of memory");
@@ -597,204 +712,405 @@ int fx_encode(const struct fx_score_patterns *sc,
 		uint32_t group_bytes = 0;
 		uint8_t src_pattern[FX_ENC_CHANNELS] = { 0, 0, 0, 0 };
 		uint32_t src_offset[FX_ENC_CHANNELS] = { 0, 0, 0, 0 };
+		int restarts = 0;
+		int pass_in_tick = 0;
 
-		for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
-			glen[ch] = 0;
-			if (step_channel(sc, &chans[ch], ch, groups[ch],
-					 &glen[ch], opt->tempo_override,
-					 &src_pattern[ch], &src_offset[ch],
-					 out->error, sizeof(out->error)) != 0) {
-				out->stream = stream.data;
-				out->stream_len = stream.len;
-				free(tick_bytes);
-				free(passes.items);
-				free(passes.arena);
-				return -1;
-			}
-		}
+		for (;;) {
+			bitmap = 0;
+			group_bytes = 0;
 
-		for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
-			if (glen[ch]) {
-				if (glen[ch] > 255) {
-					snprintf(out->error, sizeof(out->error),
-						 "tick %u channel %d group is %u "
-						 "bytes > 255 (record would exceed "
-						 "the one-byte length field)",
-						 (unsigned)ticks, ch,
-						 (unsigned)glen[ch]);
+			for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
+				glen[ch] = 0;
+				if (step_channel(sc, &chans[ch], ch, groups[ch],
+						 &glen[ch], opt->tempo_override,
+						 allow_loops,
+						 &src_pattern[ch], &src_offset[ch],
+						 out->error, sizeof(out->error)) != 0) {
 					rc = -1;
 					goto done;
 				}
-				glen8[ch] = (uint8_t)glen[ch];
-				bitmap |= (uint8_t)(1u << ch);
-				group_bytes += glen[ch];
-			} else {
-				glen8[ch] = 0;
 			}
-		}
-		if (bitmap != 0) {
-			if (passes_add(&passes, (uint32_t)ticks, bitmap, glen8,
-				       src_pattern, src_offset, groups) != 0) {
-				rc = set_result_error(out, "out of memory");
-				goto done;
+
+			for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
+				if (glen[ch]) {
+					if (glen[ch] > 255) {
+						snprintf(out->error, sizeof(out->error),
+							 "tick %u channel %d group is %u "
+							 "bytes > 255 (record would exceed "
+							 "the one-byte length field)",
+							 (unsigned)ticks, ch,
+							 (unsigned)glen[ch]);
+						rc = -1;
+						goto done;
+					}
+					glen8[ch] = (uint8_t)glen[ch];
+					bitmap |= (uint8_t)(1u << ch);
+					group_bytes += glen[ch];
+				} else {
+					glen8[ch] = 0;
+				}
 			}
-			payload_total += group_bytes;
-			if (group_bytes > max_group) max_group = group_bytes;
+			/* Command passes are always stored. In loop mode an extra
+			 * same-tick pass is stored even when empty: it is the
+			 * effect-only pass that carries live effect state across
+			 * the restart exactly as the original's second pass. */
+			if (bitmap != 0 || (allow_loops && pass_in_tick > 0)) {
+				if (passes_add(&passes, (uint32_t)ticks, bitmap,
+					       glen8, src_pattern, src_offset,
+					       groups) != 0) {
+					rc = set_result_error(out, "out of memory");
+					goto done;
+				}
+				payload_total += group_bytes;
+				if (group_bytes > max_group) max_group = group_bytes;
+			}
+
+			{
+				uint8_t any_active = 0;
+				for (int ch = 0; ch < FX_ENC_CHANNELS; ch++)
+					if (chans[ch].active) any_active = 1;
+				if (any_active) break;
+
+				if (allow_loops) {
+					uint8_t mask = 0;
+					for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
+						if (chans[ch].loop == 255) continue;
+						/* original restart: same stack
+						 * frame, delay 0, re-armed; the
+						 * frame pattern index is not
+						 * rewritten (documented quirk) */
+						chans[ch].stack[0].cmd =
+							pattern_start(sc, chans[ch].loop);
+						chans[ch].delay = 0;
+						chans[ch].active = 1;
+						mask |= (uint8_t)(1u << ch);
+					}
+					if (mask) {
+						if (restarts >= 1) {
+							rc = set_result_error(out,
+								"zero-time loop cycle: more than one all-stopped restart within a single tick");
+							goto done;
+						}
+						restarts++;
+						pass_in_tick++;
+						/* The pass just emitted is the
+						 * original's all-stopped pass:
+						 * mark it so the decoder re-arms
+						 * the same channels in the same
+						 * tick after applying it. */
+						if (passes.count > 0)
+							passes.items[passes.count - 1]
+								.restart_mask = mask;
+						/* Global-loop cycle detection on the
+						 * post-restart traversal state: the
+						 * first repeated restart marks the
+						 * loop period; the anchor is the
+						 * earlier restart tick. */
+						if (allow_loops && !has_loop) {
+							uint64_t h = chan_hash(chans);
+							for (size_t j = 0; j < nrl; j++) {
+								if (rl[j].hash != h) continue;
+								if (memcmp(&rl[j].state, chans,
+									   sizeof(chans)) != 0)
+									continue;
+								loop_start_tick = rl[j].tick;
+								loop_period = ticks - rl[j].tick;
+								target_end_tick =
+									loop_start_tick + loop_period;
+								has_loop = 1;
+								break;
+							}
+							if (!has_loop) {
+								if (nrl == caprl) {
+									size_t cap = caprl
+										? caprl * 2 : 64;
+									struct restartrec *n =
+										realloc(rl, cap * sizeof(*rl));
+									if (!n) {
+										rc = set_result_error(out,
+											"out of memory");
+										goto done;
+									}
+									rl = n;
+									caprl = cap;
+								}
+								rl[nrl].tick = ticks;
+								rl[nrl].hash = h;
+								rl[nrl].mask = mask;
+								memcpy(&rl[nrl].state, chans,
+								       sizeof(chans));
+								nrl++;
+							}
+						}
+						continue; /* extra pass, same tick */
+					}
+				}
+				stopped_at = (int)ticks + 1;
+				break;
+			}
 		}
 
 		ticks++;
 
-		{
-			uint8_t any_active = 0;
-			for (int ch = 0; ch < FX_ENC_CHANNELS; ch++)
-				if (chans[ch].active) any_active = 1;
-			if (!any_active) {
-				stopped_at = (int)ticks;
-				break;
+		if (stopped_at >= 0) {
+			if (has_loop) {
+				rc = set_result_error(out,
+					"loop traversal-cycle: a genuine stop appeared inside the detected period");
+				goto done;
 			}
+			break;
 		}
+		if (has_loop && ticks >= target_end_tick) break;
 
 		for (int ch = 0; ch < FX_ENC_CHANNELS; ch++)
 			if (chans[ch].delay != FX_DELAY_STOP) chans[ch].delay--;
 	}
 
+	/* Drop any passes emitted past the loop boundary (the tick where the
+	 * second restart was detected repeats the anchor tick). */
+	if (allow_loops && !has_loop && stopped_at < 0) {
+		rc = set_result_error(out,
+			"loop traversal-cycle not detected within the tick cap (unbounded or too-long traversal)");
+		goto done;
+	}
+	if (has_loop) {
+		while (passes.count > 0 &&
+		       (long)passes.items[passes.count - 1].tick >= target_end_tick)
+			passes.count--;
+		payload_total = 0;
+		max_group = 0;
+		for (size_t i = 0; i < passes.count; i++) {
+			uint32_t gb = 0;
+			for (int ch = 0; ch < FX_ENC_CHANNELS; ch++)
+				gb += passes.items[i].glen[ch];
+			payload_total += gb;
+			if (gb > max_group) max_group = gb;
+		}
+	}
+
 	/* --- serialize --- */
-	if (bytes_reserve(&stream, 1) != 0) {
+	if (has_loop) {
+		for (size_t i = 0; i < passes.count; i++) {
+			if ((long)passes.items[i].tick >= loop_start_tick) {
+				loop_pass_first = i;
+				break;
+			}
+		}
+		if (loop_pass_first >= passes.count) {
+			rc = set_result_error(out,
+				"internal error: loop region has no passes");
+			goto done;
+		}
+		/* loop_start_rel = header + all intro record lengths */		loop_start_rel = FX_ENC_LOOP_HEADER;
+		for (size_t i = 0; i < loop_pass_first; i++) {
+			const struct pass *p = &passes.items[i];
+			uint32_t gap = (uint32_t)((long)passes.items[i + 1].tick -
+						  (long)p->tick);
+			uint32_t blen = (uint32_t)fx_gap_nbytes(gap) + 1;
+			for (int ch = 0; ch < FX_ENC_CHANNELS; ch++)
+				if (p->bitmap & (1u << ch))
+					blen += 1u + p->glen[ch];
+			loop_start_rel += 1 + blen;
+		}
+	}
+
+	if (bytes_reserve(&stream, FX_ENC_LOOP_HEADER + 1) != 0) {
 		rc = set_result_error(out, "out of memory");
 		goto done;
 	}
-	stream.data[stream.len++] = FX_ENC_STREAM_MAGIC;
+	stream.data[stream.len++] = has_loop ? FX_ENC_STREAM_MAGIC_LOOP
+					     : FX_ENC_STREAM_MAGIC;
+	if (has_loop) {
+		stream.data[stream.len++] = (uint8_t)(loop_start_rel & 0xFF);
+		stream.data[stream.len++] = (uint8_t)((loop_start_rel >> 8) & 0xFF);
+		stream.data[stream.len++] = (uint8_t)((loop_start_rel >> 16) & 0xFF);
+	}
 
-	for (size_t i = 0; i < passes.count; i++) {
-		const struct pass *p = &passes.items[i];
-		uint32_t gap;
-		uint32_t body;
-		uint32_t reclen;
-		uint8_t bitmap = p->bitmap;
+	{
+		uint32_t loop_bytes = 0;
+		for (size_t i = 0; i < passes.count; i++) {
+			const struct pass *p = &passes.items[i];
+			uint32_t gap;
+			uint32_t body;
+			uint32_t reclen;
+			uint8_t bitmap = p->bitmap;
 
-		/* gap = effect-only ticks strictly between this pass and the next */
-		if (i + 1 < passes.count) {
-			uint32_t next = passes.items[i + 1].tick;
-			if (next <= p->tick) {
-				rc = set_result_error(out,
-					"internal error: pass ticks are not increasing");
-				goto done;
-			}
-			gap = next - p->tick - 1;
-		} else {
-			gap = 0;
-		}
-		if (fx_gap_nbytes(gap) == 0) {
-			size_t used;
-			snprintf(out->error, sizeof(out->error),
-				 "gap %u between tick %u and the next pass "
-				 "exceeds the 65535 varint maximum",
-				 (unsigned)gap, (unsigned)p->tick);
-			used = strlen(out->error);
-			if (i + 1 < passes.count) {
-				const struct pass *nx = &passes.items[i + 1];
-				for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
-					if (!(nx->bitmap & (1u << ch))) continue;
-					snprintf(out->error + used,
-						 sizeof(out->error) - used,
-						 " (next pass tick %u channel %d "
-						 "pattern %u offset 0x%04X)",
-						 (unsigned)nx->tick, ch,
-						 (unsigned)nx->src_pattern[ch],
-						 (unsigned)nx->src_offset[ch]);
-					break;
+			if (has_loop) {
+				/* loop-mode gap field: 0 = same-tick extra
+				 * pass; otherwise (ticks to next pass) so
+				 * effect-only ticks = gap_field - 1. */
+				long nt = (i + 1 < passes.count)
+					? (long)passes.items[i + 1].tick
+					: target_end_tick;
+				if (nt < (long)p->tick) {
+					rc = set_result_error(out,
+						"internal error: pass ticks are not increasing");
+					goto done;
 				}
+				gap = (uint32_t)(nt - (long)p->tick);
+			} else if (i + 1 < passes.count) {
+				uint32_t next = passes.items[i + 1].tick;
+				if (next <= p->tick) {
+					rc = set_result_error(out,
+						"internal error: pass ticks are not increasing");
+					goto done;
+				}
+				gap = next - p->tick - 1;
+			} else {
+				gap = 0;
 			}
-			rc = -1;
-			goto done;
-		}
-		if (bitmap == 0) {
-			snprintf(out->error, sizeof(out->error),
-				 "pass at tick %u has bitmap 0 (nonprogressing)",
-				 (unsigned)p->tick);
-			rc = -1;
-			goto done;
-		}
-		if (bitmap & 0xF0) {
-			snprintf(out->error, sizeof(out->error),
-				 "pass at tick %u has bitmap 0x%02X > 15",
-				 (unsigned)p->tick, (unsigned)bitmap);
-			rc = -1;
-			goto done;
-		}
-
-		body = (uint32_t)fx_gap_nbytes(gap) + 1;
-		for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
-			if (!(bitmap & (1u << ch))) continue;
-			if (p->glen[ch] == 0) {
+			if (fx_gap_nbytes(gap) == 0) {
+				size_t used;
 				snprintf(out->error, sizeof(out->error),
-					 "tick %u channel %d has glen 0 with "
-					 "bitmap bit set", (unsigned)p->tick, ch);
+					 "gap %u between tick %u and the next pass "
+					 "exceeds the 65535 varint maximum",
+					 (unsigned)gap, (unsigned)p->tick);
+				used = strlen(out->error);
+				if (i + 1 < passes.count) {
+					const struct pass *nx = &passes.items[i + 1];
+					for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
+						if (!(nx->bitmap & (1u << ch))) continue;
+						snprintf(out->error + used,
+							 sizeof(out->error) - used,
+							 " (next pass tick %u channel %d "
+							 "pattern %u offset 0x%04X)",
+							 (unsigned)nx->tick, ch,
+							 (unsigned)nx->src_pattern[ch],
+							 (unsigned)nx->src_offset[ch]);
+						break;
+					}
+				}
 				rc = -1;
 				goto done;
 			}
-			body += 1u + p->glen[ch];
-		}
-		reclen = 1 + body;
+			if (bitmap == 0 && !has_loop) {
+				snprintf(out->error, sizeof(out->error),
+					 "pass at tick %u has bitmap 0 (nonprogressing)",
+					 (unsigned)p->tick);
+				rc = -1;
+				goto done;
+			}
+			if (bitmap & 0xF0) {
+				snprintf(out->error, sizeof(out->error),
+					 "pass at tick %u has bitmap 0x%02X > 15",
+					 (unsigned)p->tick, (unsigned)bitmap);
+				rc = -1;
+				goto done;
+			}
 
-		if (reclen < 5) {
-			snprintf(out->error, sizeof(out->error),
-				 "record at tick %u is %u bytes < 5",
-				 (unsigned)p->tick, (unsigned)reclen);
-			rc = -1;
-			goto done;
-		}
-		if (reclen > opt->ring) {
-			size_t used;
-			snprintf(out->error, sizeof(out->error),
-				 "record at tick %u is %u bytes > ring %u "
-				 "(channels", (unsigned)p->tick, (unsigned)reclen,
-				 (unsigned)opt->ring);
-			used = strlen(out->error);
+			body = (uint32_t)fx_gap_nbytes(gap) + 1;
 			for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
 				if (!(bitmap & (1u << ch))) continue;
-				used += (size_t)snprintf(
-					out->error + used,
-					sizeof(out->error) - used,
-					" %d:%uB pattern %u offset 0x%04X", ch,
-					(unsigned)p->glen[ch],
-					(unsigned)p->src_pattern[ch],
-					(unsigned)p->src_offset[ch]);
+				if (p->glen[ch] == 0) {
+					snprintf(out->error, sizeof(out->error),
+						 "tick %u channel %d has glen 0 with "
+						 "bitmap bit set", (unsigned)p->tick, ch);
+					rc = -1;
+					goto done;
+				}
+				body += 1u + p->glen[ch];
 			}
-			snprintf(out->error + used,
-				 sizeof(out->error) - used, ")");
-			rc = -1;
-			goto done;
-		}
-		if (reclen > 255) {
-			snprintf(out->error, sizeof(out->error),
-				 "record at tick %u is %u bytes > 255",
-				 (unsigned)p->tick, (unsigned)reclen);
-			rc = -1;
-			goto done;
+			reclen = 1 + body;
+
+			if (!has_loop && reclen < 5) {
+				snprintf(out->error, sizeof(out->error),
+					 "record at tick %u is %u bytes < 5",
+					 (unsigned)p->tick, (unsigned)reclen);
+				rc = -1;
+				goto done;
+			}
+			if (has_loop && bitmap == 0 && reclen < 3) {
+				snprintf(out->error, sizeof(out->error),
+					 "effect-only record at tick %u is %u bytes < 3",
+					 (unsigned)p->tick, (unsigned)reclen);
+				rc = -1;
+				goto done;
+			}
+			if (reclen > opt->ring) {
+				size_t used;
+				snprintf(out->error, sizeof(out->error),
+					 "record at tick %u is %u bytes > ring %u "
+					 "(channels", (unsigned)p->tick, (unsigned)reclen,
+					 (unsigned)opt->ring);
+				used = strlen(out->error);
+				for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
+					if (!(bitmap & (1u << ch))) continue;
+					used += (size_t)snprintf(
+						out->error + used,
+						sizeof(out->error) - used,
+						" %d:%uB pattern %u offset 0x%04X", ch,
+						(unsigned)p->glen[ch],
+						(unsigned)p->src_pattern[ch],
+						(unsigned)p->src_offset[ch]);
+				}
+				snprintf(out->error + used,
+					 sizeof(out->error) - used, ")");
+				rc = -1;
+				goto done;
+			}
+			if (reclen > 255) {
+				snprintf(out->error, sizeof(out->error),
+					 "record at tick %u is %u bytes > 255",
+					 (unsigned)p->tick, (unsigned)reclen);
+				rc = -1;
+				goto done;
+			}
+			if (has_loop && i == loop_pass_first &&
+			    stream.len != loop_start_rel) {
+				snprintf(out->error, sizeof(out->error),
+					"internal error: loop_start_rel %u != serialized offset %zu (tick %u)",
+					(unsigned)loop_start_rel, stream.len,
+					(unsigned)p->tick);
+				rc = -1;
+				goto done;
+			}
+
+			if (bytes_reserve(&stream, reclen) != 0) {
+				rc = set_result_error(out, "out of memory");
+				goto done;
+			}
+			stream.data[stream.len++] = (uint8_t)reclen;
+			{
+				uint8_t *w = fx_put_gap(stream.data + stream.len, gap);
+				stream.len = (size_t)(w - stream.data);
+			}
+			stream.data[stream.len++] = (uint8_t)(bitmap |
+				(uint8_t)(p->restart_mask << 4));
+			for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
+				if (!(bitmap & (1u << ch))) continue;
+				stream.data[stream.len++] = p->glen[ch];
+				memcpy(stream.data + stream.len,
+				       passes.arena + p->goff[ch], p->glen[ch]);
+				stream.len += p->glen[ch];
+			}
+			if (reclen > max_record) max_record = reclen;
+			framing_total += reclen;
+			if (p->tick <= (uint32_t)tick_cap) {
+				if (has_loop) {
+					uint16_t acc = (uint16_t)tick_bytes[p->tick] +
+						       reclen;
+					tick_bytes[p->tick] = acc > 0xFF ? 0xFF
+									 : (uint8_t)acc;
+				} else {
+					tick_bytes[p->tick] = (uint8_t)reclen;
+				}
+			}
+			if (has_loop && i >= loop_pass_first)
+				loop_bytes += reclen;
 		}
 
-		if (bytes_reserve(&stream, reclen) != 0) {
-			rc = set_result_error(out, "out of memory");
-			goto done;
+		if (has_loop) {
+			if (loop_bytes == 0 || loop_bytes > opt->ring) {
+				snprintf(out->error, sizeof(out->error),
+					 "loop region is %u bytes > ring %u "
+					 "(a deviceless loop wrap needs the "
+					 "whole region resident)",
+					 (unsigned)loop_bytes,
+					 (unsigned)opt->ring);
+				rc = -1;
+				goto done;
+			}
 		}
-		stream.data[stream.len++] = (uint8_t)reclen;
-		{
-			uint8_t *w = fx_put_gap(stream.data + stream.len, gap);
-			stream.len = (size_t)(w - stream.data);
-		}
-		stream.data[stream.len++] = bitmap;
-		for (int ch = 0; ch < FX_ENC_CHANNELS; ch++) {
-			if (!(bitmap & (1u << ch))) continue;
-			stream.data[stream.len++] = p->glen[ch];
-			memcpy(stream.data + stream.len,
-			       passes.arena + p->goff[ch], p->glen[ch]);
-			stream.len += p->glen[ch];
-		}
-		if (reclen > max_record) max_record = reclen;
-		framing_total += reclen;
-		if (p->tick <= (uint32_t)tick_cap)
-			tick_bytes[p->tick] = (uint8_t)reclen;
 	}
 
 	if (bytes_reserve(&stream, 1) != 0) {
@@ -802,11 +1118,12 @@ int fx_encode(const struct fx_score_patterns *sc,
 		goto done;
 	}
 	stream.data[stream.len++] = FX_ENC_STREAM_END;
-	if (stopped_at >= 0 && stopped_at <= (int)tick_cap)
+	if (!has_loop && stopped_at >= 0 && stopped_at <= (int)tick_cap)
 		tick_bytes[stopped_at] = 1;
 
 	{
-		long ticks_span = stopped_at >= 0 ? stopped_at : ticks;
+		long ticks_span = has_loop ? target_end_tick
+			: (stopped_at >= 0 ? stopped_at : ticks);
 		for (int k = 1; k <= FX_ENC_MAX_WINDOW; k++) {
 			uint64_t sum = 0;
 			for (long i = 0; i < ticks_span; i++) {
@@ -826,6 +1143,13 @@ int fx_encode(const struct fx_score_patterns *sc,
 	out->meta.max_group = max_group;
 	out->meta.max_record = max_record;
 	out->meta.framing_bytes = framing_total;
+	out->meta.has_loop = has_loop;
+	out->meta.loop_start_offset = has_loop ? (int32_t)loop_start_rel : -1;
+	out->meta.intro_ticks = has_loop ? (uint32_t)loop_start_tick : 0;
+	out->meta.cycle_ticks = has_loop ? (uint32_t)loop_period : 0;
+	out->meta.intro_passes = has_loop ? (uint32_t)loop_pass_first : 0;
+	out->meta.loop_passes = has_loop
+		? (uint32_t)(passes.count - loop_pass_first) : 0;
 	out->stream = stream.data;
 	out->stream_len = stream.len;
 	stream.data = NULL;
@@ -844,6 +1168,7 @@ done:
 	free(tick_bytes);
 	free(passes.items);
 	free(passes.arena);
+	free(rl);
 	free(stream.data);
 	if (rc != 0) {
 		free(out->stream);
