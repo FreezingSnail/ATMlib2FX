@@ -27,6 +27,15 @@
 #define OSC_HI(v) ((v)>>8)
 #define OSC_LO(v) ((v)&0xFF)
 
+/*
+  Compile-time proof that OSC_TICKRATE_MAX resolves and matches the timer
+  divider math. TIMER3_COMPA fires at OSC_SAMPLERATE Hz and the tick handler
+  runs once every OSC_ISR_PRESCALER_DIV interrupts (see the [div] operand in the
+  ISR below), so the fastest tick rate is OSC_SAMPLERATE/OSC_ISR_PRESCALER_DIV.
+*/
+_Static_assert(OSC_TICKRATE_MAX == 2000,
+               "OSC_TICKRATE_MAX must be OSC_SAMPLERATE/OSC_ISR_PRESCALER_DIV");
+
 static void osc_reset(void);
 static void osc_setactive(const uint8_t active_flag);
 

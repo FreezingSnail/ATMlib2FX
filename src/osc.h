@@ -5,8 +5,11 @@
 #define OSC_SAMPLERATE (16000)
 #define OSC_MOD_MIN (0)
 #define OSC_MOD_MAX (255)
+/* TIMER3_COMPA fires at OSC_SAMPLERATE Hz and the tick handler is only run
+   once every OSC_ISR_PRESCALER_DIV interrupts (see the ISR asm in osc.c), so
+   the fastest configurable tick rate is OSC_SAMPLERATE/OSC_ISR_PRESCALER_DIV. */
 #define OSC_ISR_PRESCALER_DIV (8)
-#define OSC_TICKRATE_MAX (OSC_SAMPLERATE/ISR_PRESCALER_DIV)
+#define OSC_TICKRATE_MAX (OSC_SAMPLERATE/OSC_ISR_PRESCALER_DIV)
 /*
 OSC period is 2**16 so Nyquist corresponds to 2**16/2. Note that's way too high
 for square waves to sound OK.
