@@ -74,6 +74,7 @@ __ATMLIB_CSS__
         <canvas id="overlay-canvas" width="10" height="10"></canvas>
       </div>
     </div>
+    <p class="effect-legend" id="effect-legend" hidden aria-label="Effect and command legend"></p>
     <table class="tracker" id="tracker" hidden>
       <caption>Expanded note events in the visible timeline window</caption>
       <thead>
@@ -95,6 +96,12 @@ __ATMLIB_CSS__
       </thead>
       <tbody id="tracker-body"></tbody>
     </table>
+  </section>
+
+  <section class="panel" id="automation-panel" aria-labelledby="automation-heading" hidden>
+    <h2 id="automation-heading">Effects and automation</h2>
+    <p class="state">Expanded effect windows and instantaneous live commands from the canonical review payload. Ticks are absolute song positions; windows are half-open <code>[start, end)</code>.</p>
+    <ul class="automation" id="automation-list"></ul>
   </section>
 
   <section class="panel" aria-labelledby="detail-heading">

@@ -16,6 +16,9 @@
 
 * { box-sizing: border-box; }
 
+/* Author `display` rules must never override the `hidden` attribute. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -86,6 +89,20 @@ html, body {
 .lane-toggles { display: flex; flex-wrap: wrap; gap: 12px; }
 .lane-toggles label { display: inline-flex; gap: 6px; align-items: center; }
 .vis-note { margin: 0; color: var(--muted); }
+
+.effect-legend { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; }
+.effect-legend .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 2px; vertical-align: -1px; }
+.effect-legend .command-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #b5651d; }
+
+.automation { list-style: none; margin: 8px 0 0; padding: 0; }
+.automation li { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 4px 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.automation li:last-child { border-bottom: 0; }
+.automation .auto-kind { font-weight: 600; min-width: 108px; }
+.automation .auto-ticks { color: var(--muted); min-width: 78px; }
+.automation .auto-desc { }
+.automation .auto-channel { color: var(--muted); }
+.automation .ptr { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); word-break: break-all; }
+.automation code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 .roll-wrap { display: flex; gap: 0; align-items: stretch; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .gutter { flex: 0 0 96px; display: flex; flex-direction: column; border-right: 1px solid var(--line); background: #f4f1ea; }

@@ -116,7 +116,7 @@ def render_html(document: dict) -> str:
     html = (
         template.replace("__ATMLIB_CSS__", _read_asset("viewer.css"), 1)
         .replace("__ATMLIB_DATA__", data, 1)
-        .replace("__ATMLIB_JS__", _read_asset("piezo.js") + "\n" + _read_asset("loop.js") + "\n" + _read_asset("viewer.js"), 1)
+        .replace("__ATMLIB_JS__", _read_asset("piezo.js") + "\n" + _read_asset("loop.js") + "\n" + _read_asset("effects.js") + "\n" + _read_asset("viewer.js"), 1)
     )
     return html
 

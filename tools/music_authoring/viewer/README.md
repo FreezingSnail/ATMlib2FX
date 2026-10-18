@@ -15,6 +15,7 @@ generated output and retained measurement evidence.
 | `template.html` | HTML skeleton with `__ATMLIB_CSS__`, `__ATMLIB_DATA__`, `__ATMLIB_JS__` placeholders |
 | `viewer.css` | Embedded styles (inlined into the output) |
 | `viewer.js` | Draws and selects the canonical payload; audio playback; no parsing/expansion |
+| `effects.js` | Labels and buckets the canonical effect spans and live commands; no DOM/source parsing |
 | `piezo.js` | Optional native Web Audio coloration and raw bypass; no WAV/source changes |
 | `loop.js` | Prepares one measured PCM cycle for native media looping |
 
@@ -49,6 +50,29 @@ The player's music files (each song's matching `preview.json` + `preview.wav`) a
 maintained beside each song in `examples/music_authoring/**/preview/`; the shell
 assets (`template.html`, `shell.css`, `shell.js`) live in
 `tools/music_authoring/library_player/`.
+
+## Effect windows and live commands
+
+When the canonical review payload carries the additive `effects` and
+`commands` keys, the viewer draws them without parsing the score:
+
+- **Effect windows** occupy a reserved translucent band at the top of each
+  lane, colour-coded per kind and deliberately separate from pitch-positioned
+  note blocks. The band shows a compact label (`arp +4/+7 · 3t · repeat`,
+  `cut · 4t · no repeat`, `lfo trem · d90 · 12t`, `slide volume · -2/4t`,
+  `gliss up · 5t`, `retrig 3t · C4`) when width allows and falls back to the
+  short kind tag.
+- **Live commands** are amber dashed ticks with a diamond and a label
+  (`tempo 100`, `trans -12`, `vol 90`, `mod 40`, `cue 7`). Labels are skipped
+  only when neighbouring labels would collide.
+- An **Effects and automation** panel lists every expanded span with its
+  channel, absolute `[start, end)` ticks, full label, and source JSON Pointer.
+  The legend and totals rows appear only when the payload has those keys, so
+  effect-free reviews are unchanged.
+- Lane visibility still hides the entire lane (notes, effects and commands);
+  it never mutes audio.
+
+Helper checks: `node tests/music_authoring/viewer/test_effects.mjs`.
 
 ## Guarantees
 

@@ -19,12 +19,16 @@
   var CHANNELS = REVIEW.channels || [];
   var NOTES = REVIEW.notes || [];
   var INSTANCES = REVIEW.pattern_instances || [];
+  var EFFECT_SPANS = REVIEW.effects || [];
+  var COMMANDS = REVIEW.commands || [];
   var CLOCK = REVIEW.clock || {};
   var TOTAL = REVIEW.total_ticks || 0;
+  var FX = window.ATMlibEffects || null;
 
   var RULER_H = 28;
   var LANE_H = 36;
   var NOTE_PAD = 4;
+  var EFFECT_BAND_H = 10;
   var TRACKER_MAX_ROWS = 400;
   var LANE_COLORS = ["#1f5f8b", "#2f7d4f", "#8a5a1f", "#7a2f6f"];
   var TICK_BASE_HZ = 2000;
@@ -98,6 +102,25 @@
     return { lo: lo === null ? 0 : lo, hi: hi === null ? 0 : hi };
   });
 
+  // Effect spans and commands are already expanded and absolute in the
+  // canonical payload; bucket them once so a lane only scans its own entries.
+  function bucketByChannel(items) {
+    var buckets = [];
+    (items || []).map(function (item, index) { return { item: item, index: index }; })
+      .sort(function (a, b) {
+        return (a.item.start_tick || 0) - (b.item.start_tick || 0) || a.index - b.index;
+      })
+      .forEach(function (entry) {
+        var channel = Number(entry.item.channel);
+        if (isNaN(channel) || channel < 0) return;
+        if (!buckets[channel]) buckets[channel] = [];
+        buckets[channel].push(entry.item);
+      });
+    return buckets;
+  }
+  var effectsByChannel = bucketByChannel(EFFECT_SPANS);
+  var commandsByChannel = bucketByChannel(COMMANDS);
+
   function lowerBound(arr, tick) {
     var lo = 0, hi = arr.length;
     while (lo < hi) {
@@ -122,10 +145,29 @@
     return out;
   }
 
+  function itemStart(item) { return Number(item.start_tick) || 0; }
+  function itemEnd(item) {
+    var end = Number(item.end_tick);
+    return isNaN(end) ? itemStart(item) : end;
+  }
+  function visibleSpans(buckets, ch) {
+    var arr = buckets[ch] || [];
+    var a = state.viewStart;
+    var b = state.viewStart + state.viewTicks;
+    var out = [];
+    arr.forEach(function (item) {
+      if (itemStart(item) > b) return;
+      var end = itemEnd(item);
+      if (end < a || (end === a && itemStart(item) < a)) return;
+      out.push(item);
+    });
+    return out;
+  }
+
   function noteY(ch, noteIndex) {
     var range = pitchRange[ch];
-    var top = laneTop(ch) + NOTE_PAD;
-    var height = LANE_H - 2 * NOTE_PAD;
+    var top = laneTop(ch) + EFFECT_BAND_H + NOTE_PAD;
+    var height = LANE_H - EFFECT_BAND_H - 2 * NOTE_PAD;
     if (range.hi === range.lo) return top + height / 2 - 5;
     var ratio = (noteIndex - range.lo) / (range.hi - range.lo);
     return top + (1 - ratio) * (height - 10);
@@ -200,6 +242,8 @@
       }
       drawInstances(ctx, ch);
       drawNotes(ctx, ch);
+      drawEffects(ctx, ch);
+      drawCommands(ctx, ch);
     });
   }
 
@@ -222,7 +266,7 @@
         ctx.fillStyle = "#8a7f9a";
         ctx.font = "9px -apple-system, sans-serif";
         ctx.textBaseline = "bottom";
-        ctx.fillText(inst.pattern + " #" + inst.repeat_index, x + 3, top + 11);
+        ctx.fillText(inst.pattern + " #" + inst.repeat_index, x + 3, top + EFFECT_BAND_H + 9);
       }
     });
   }
@@ -258,6 +302,100 @@
         ctx.fillText(note.note, x0 + 3, y + 5);
       }
     });
+  }
+
+  function effectColor(kind) { return FX ? FX.effectColor(kind) : "#5b564e"; }
+  function effectShort(kind) { return FX ? FX.effectShortName(kind) : String(kind).slice(0, 4); }
+  function effectText(span) { return FX ? FX.describeEffect(span) : String(span.kind); }
+  function commandText(event) { return FX ? FX.describeCommand(event) : String(event.kind); }
+  function commandColor() { return FX ? FX.commandColor() : "#b5651d"; }
+
+  function fitLabel(ctx, width, full, short) {
+    if (ctx.measureText(full).width + 6 <= width) return full;
+    if (ctx.measureText(short).width + 6 <= width) return short;
+    return "";
+  }
+
+  /* Effect windows occupy a reserved band at the top of their lane, so they
+   * stay visually separate from the pitch-positioned note blocks. */
+  function drawEffects(ctx, ch) {
+    var spans = visibleSpans(effectsByChannel, ch);
+    if (!spans.length) return;
+    var top = laneTop(ch) + 1;
+    var height = EFFECT_BAND_H - 2;
+    var w = trackWidth();
+    ctx.save();
+    ctx.font = "9px -apple-system, sans-serif";
+    ctx.textBaseline = "middle";
+    spans.forEach(function (span) {
+      var x0 = tickToX(itemStart(span));
+      var x1 = tickToX(itemEnd(span));
+      if (x1 < 0 || x0 > w) return;
+      x0 = Math.max(-2, Math.min(w + 2, x0));
+      x1 = Math.max(-2, Math.min(w + 2, x1));
+      var width = Math.max(2, x1 - x0);
+      var color = effectColor(span.kind);
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = color;
+      ctx.fillRect(x0, top, width, height);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.fillRect(x0, top, width, 2);
+      if (width > 3) ctx.fillRect(x0, top, 1.5, height);
+      var label = fitLabel(ctx, width,
+        effectText(span), effectShort(span.kind));
+      if (label) {
+        ctx.fillStyle = color;
+        ctx.fillText(label, x0 + 3, top + height / 2 + 0.5);
+      }
+    });
+    ctx.restore();
+  }
+
+  /* Instantaneous commands are amber dashed ticks with a diamond and a short
+   * text label. Labels are skipped when neighbours would collide. */
+  function drawCommands(ctx, ch) {
+    var commands = visibleSpans(commandsByChannel, ch);
+    if (!commands.length) return;
+    var top = laneTop(ch) + 2;
+    var bottom = laneTop(ch) + LANE_H - 1;
+    var w = trackWidth();
+    var color = commandColor();
+    var lastLabelEnd = -Infinity;
+    ctx.save();
+    ctx.font = "9px -apple-system, sans-serif";
+    ctx.textBaseline = "bottom";
+    commands.forEach(function (event) {
+      var x = tickToX(itemStart(event));
+      if (x < -4 || x > w + 4) return;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.7;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, top);
+      ctx.lineTo(x + 0.5, bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x, bottom - 4);
+      ctx.lineTo(x - 3.5, bottom);
+      ctx.lineTo(x + 3.5, bottom);
+      ctx.closePath();
+      ctx.fill();
+      var label = commandText(event);
+      var width = ctx.measureText(label).width;
+      if (x + 5 < lastLabelEnd || x + width + 7 > w) return;
+      var labelX = x + 4;
+      var labelY = bottom - 5;
+      ctx.fillStyle = "rgba(255,255,255,0.86)";
+      ctx.fillRect(labelX - 2, labelY - 10, width + 4, 11);
+      ctx.fillStyle = color;
+      ctx.fillText(label, labelX, labelY);
+      lastLabelEnd = labelX + width + 3;
+    });
+    ctx.restore();
   }
 
   function drawRenderedRegion(ctx) {
@@ -691,13 +829,19 @@
       ["Effective BPM", fmt(CLOCK.effective_bpm, 3)],
       ["Song length", songSeconds.toFixed(4) + " s"],
       ["Expanded notes", NOTES.length],
-      ["Pattern instances", INSTANCES.length],
+      ["Pattern instances", INSTANCES.length]
+    ];
+    // Additive rows keep effect-free reviews byte-similar in meaning while
+    // surfacing the expanded automation actually present in the timeline.
+    if (EFFECT_SPANS.length) rows.push(["Expanded effect windows", EFFECT_SPANS.length]);
+    if (COMMANDS.length) rows.push(["Expanded live commands", COMMANDS.length]);
+    rows.push(
       ["Source sha256", source.sha256],
       ["Source bytes", source.bytes],
       ["Canonical event digest", digest.hex],
       ["Canonicalization", digest.canonicalization],
       ["Engine", (engine.name || "ATMlib") + " " + (engine.library_version || "")]
-    ];
+    );
     rows.forEach(function (pair) {
       totals.appendChild(el("dt", "", pair[0]));
       totals.appendChild(el("dd", pair[0].indexOf("sha256") >= 0 ? "ptr" : "", fmt(pair[1])));
@@ -740,6 +884,68 @@
       label.appendChild(document.createTextNode("Show " + (channel.name || ch)));
       host.appendChild(label);
     });
+  }
+
+  function buildAutomation() {
+    if (!EFFECT_SPANS.length && !COMMANDS.length) return;
+    var legend = document.getElementById("effect-legend");
+    var panel = document.getElementById("automation-panel");
+    var list = document.getElementById("automation-list");
+    clear(legend);
+    clear(list);
+
+    var present = [];
+    if (FX) {
+      FX.EFFECT_KINDS.forEach(function (kind) {
+        if (EFFECT_SPANS.some(function (span) { return span.kind === kind; })) present.push(kind);
+      });
+    } else {
+      EFFECT_SPANS.forEach(function (span) {
+        if (present.indexOf(span.kind) < 0) present.push(span.kind);
+      });
+    }
+    present.forEach(function (kind) {
+      var item = el("span");
+      var swatch = el("span", "swatch");
+      swatch.style.background = effectColor(kind);
+      item.appendChild(swatch);
+      item.appendChild(document.createTextNode(
+        FX ? FX.effectName(kind) : String(kind)));
+      legend.appendChild(item);
+    });
+    if (COMMANDS.length) {
+      var commandKey = el("span");
+      commandKey.appendChild(el("span", "command-key", "┤"));
+      commandKey.appendChild(document.createTextNode(" live command (amber tick)"));
+      legend.appendChild(commandKey);
+    }
+    legend.hidden = false;
+
+    var entries = EFFECT_SPANS.map(function (span) {
+      return { tick: itemStart(span), order: 0, effect: true, item: span };
+    }).concat(COMMANDS.map(function (event) {
+      return { tick: itemStart(event), order: 1, effect: false, item: event };
+    }));
+    entries.sort(function (a, b) { return a.tick - b.tick || a.order - b.order; });
+    entries.forEach(function (entry) {
+      var item = entry.item;
+      var channel = CHANNELS[item.channel] || {};
+      var li = el("li", entry.effect ? "auto-effect" : "auto-command");
+      li.style.borderLeft = "3px solid " +
+        (entry.effect ? effectColor(item.kind) : commandColor());
+      li.style.paddingLeft = "8px";
+      li.appendChild(el("span", "auto-kind",
+        entry.effect ? (FX ? FX.effectName(item.kind) : item.kind) : "Live command"));
+      li.appendChild(el("span", "auto-channel", channel.name || ("lane " + item.channel)));
+      li.appendChild(el("span", "auto-ticks",
+        itemStart(item) + "–" + itemEnd(item) + "t"));
+      var description = entry.effect ? effectText(item) : commandText(item);
+      if (!entry.effect && item.global) description += " · score-wide";
+      li.appendChild(el("span", "auto-desc", description));
+      if (item.source) li.appendChild(el("span", "ptr", item.source));
+      list.appendChild(li);
+    });
+    panel.hidden = false;
   }
 
   function setView(view) {
@@ -856,6 +1062,7 @@
     renderTotals();
     renderDiagnostics();
     buildLaneToggles();
+    buildAutomation();
     wireToolbar();
     wireRollInteractions();
     wireKeyboard();
