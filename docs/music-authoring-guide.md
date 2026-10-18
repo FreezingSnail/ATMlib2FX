@@ -143,8 +143,12 @@ quantizes it: `effective_tick_rate = 2000 / floor(2000 / tick_rate)`. Reported
 tempo is derived, not stored: `effective_bpm = effective_tick_rate * 60 /
 ticks_per_beat`. For `tick_rate=50, ticks_per_beat=25` the effective rate is
 exactly 50 Hz and the reported tempo is `50*60/25 = 120.0` BPM. Requested rates
-below 8 are unsupported; request 255 and you get ≈285.7 Hz. Fine musical timing
-is always counted in ticks.
+below 8 are unsupported; request 255 and you get exactly ≈285.714 Hz. Fine
+musical timing is always counted in ticks.
+
+Song length derives from the integer divider, not the rounded rate:
+`seconds = total_ticks * floor(2000 / tick_rate) / 2000`. At `tick_rate=255`
+(divider 7) 2000 ticks span exactly 7 s; the host never rounds the quotient.
 
 ## 3. Writing the score (the v1 JSON subset)
 
@@ -476,7 +480,8 @@ not claim to have judged musical quality.
   isolation is not possible from one file. After the score ends the stopped PWM
   leaves a constant DC rail (≈ −2000, zero AC) that is acoustically silent, not
   neutral 0. Lane visibility toggles never change audio.
-- **Timer-quantized tempo.** The tool reports the quantized effective tick rate;
-  BPM is derived, never stored.
+- **Timer-quantized tempo.** The tool reports the actual effective tick rate
+  (`2000 / floor(2000 / tick_rate)`, fractional for nondivisor requests); BPM is
+  derived, never stored, and the device divider is unchanged.
 - Regenerate the viewer and WAV after every revision; export is a deliberate
   `build` of the reviewed score. Do not treat a review as an export.

@@ -466,6 +466,89 @@ class SyntheticPreviewTests(unittest.TestCase):
         self.assertIn("disabled beyond the rendered range", html)
 
 
+class NondivisorDescriptorTests(unittest.TestCase):
+    """The audio descriptor carries the exact timer divider for the viewer.
+
+    Nondivisor tempos (255 Hz -> divider 7) must report the real quotient and an
+    explicit integer divider, so the JS viewer computes tick<->sample mapping as
+    ``tick * divisor / 2000 * sample_rate`` instead of dividing by a rounded Hz.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = os.path.join(OUT_ROOT, "nondivisor-descriptor")
+        os.makedirs(cls.dir, exist_ok=True)
+        doc = base_document()
+        doc["clock"]["tick_rate"] = 255
+        cls.score, diagnostics = validate_obj(doc)
+        assert cls.score is not None, diagnostics
+        cls.review = build_review_payload(cls.score, lower(cls.score))
+        samples = [0] * 11045
+        wav = make_wav(samples, rate=50000)
+        with open(os.path.join(cls.dir, "preview.wav"), "wb") as handle:
+            handle.write(wav)
+        report = {
+            "payload": "atmlib-render-preview",
+            "payload_version": 1,
+            "ok": True,
+            "source": dict(cls.review["source"]),
+            "event_digest": dict(cls.review["event_digest"]),
+            "clock": dict(cls.review["clock"]),
+            "total_ticks": cls.review["total_ticks"],
+            "render": {
+                "rendered_ticks": 8,
+                "total_ticks": cls.review["total_ticks"],
+                "truncated": True,
+                "truncation_reason": "x",
+                "seconds": {"song": 0.0},
+            },
+            "audio": {
+                "wav": "preview.wav",
+                "sha256": hashlib.sha256(wav).hexdigest(),
+                "format": "pcm-s16le-mono",
+                "channels": 1,
+                "sample_rate": 50000,
+                "bit_depth": 16,
+                "sample_count": len(samples),
+                "neutral_level": 0,
+                "sound_gain": 2000,
+                "first_music_callback_sample": 1045,
+                "first_music_callback_measured": True,
+                "analysis": {"post_end_is_ac_silent": True, "post_end_dc_level": -2000},
+            },
+            "limitations": ["synthetic"],
+        }
+        with open(os.path.join(cls.dir, "preview.json"), "w", encoding="utf-8") as handle:
+            json.dump(report, handle)
+
+    def test_descriptor_exposes_exact_divisor(self):
+        descriptor, diagnostics = load_audio_preview(self.dir, self.review)
+        self.assertEqual(diagnostics, [])
+        self.assertEqual(descriptor["effective_tick_rate"], 2000 / 7)
+        self.assertEqual(descriptor["tick_divisor"], 7)
+        # The embeddable HTML carries the same integer divider for the viewer.
+        html = render_html(
+            build_inspect_document(
+                review_payload=self.review,
+                score_id=self.score.id,
+                audio=descriptor,
+                audio_diagnostics=[],
+            )
+        )
+        embedded = json.loads(data_block(html))
+        self.assertEqual(embedded["audio"]["tick_divisor"], 7)
+
+    def test_render_maps_ticks_from_the_same_divisor(self):
+        from music_authoring.render import _tick_to_sample
+
+        first_cb = 1045
+        for tick in (0, 1, 4, 200, 2000):
+            self.assertEqual(
+                _tick_to_sample(tick, first_cb, 7),
+                first_cb + round(tick * 7 / 2000 * 50000),
+            )
+
+
 class CliTests(unittest.TestCase):
     def _out(self, name):
         return os.path.join(OUT_ROOT, name, "review.html")

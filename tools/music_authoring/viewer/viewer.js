@@ -27,6 +27,7 @@
   var NOTE_PAD = 4;
   var TRACKER_MAX_ROWS = 400;
   var LANE_COLORS = ["#1f5f8b", "#2f7d4f", "#8a5a1f", "#7a2f6f"];
+  var TICK_BASE_HZ = 2000;
 
   var el = function (tag, cls, txt) {
     var node = document.createElement(tag);
@@ -144,7 +145,7 @@
 
     var beat = CLOCK.ticks_per_beat || 25;
     var bar = beat * (CLOCK.beats_per_bar || 4);
-    var rate = CLOCK.effective_tick_rate || 0;
+    var rate = clockTicksPerSecond();
     var pxPerTick = w / state.viewTicks;
     var first = Math.floor(state.viewStart / beat) * beat;
     var last = state.viewStart + state.viewTicks;
@@ -364,13 +365,42 @@
     updateSoundProfile();
   }
 
+  /* Exact tick<->sample timing uses the integer timer divider (2000 base events
+   * per second). Prefer the audio descriptor's `tick_divisor`; fall back to the
+   * requested clock rate, then to the reported (rounded) effective rate. */
+  function audioTickDivisor() {
+    if (AUDIO && Number.isInteger(AUDIO.tick_divisor) && AUDIO.tick_divisor > 0) {
+      return AUDIO.tick_divisor;
+    }
+    if (Number.isInteger(CLOCK.tick_rate) && CLOCK.tick_rate > 0) {
+      return Math.floor(TICK_BASE_HZ / CLOCK.tick_rate);
+    }
+    return 0;
+  }
+  function clockTicksPerSecond() {
+    var d = audioTickDivisor();
+    if (d > 0) return TICK_BASE_HZ / d;
+    return CLOCK.effective_tick_rate || 0;
+  }
+
   function tickToSample(tick) {
-    if (!AUDIO || !AUDIO.effective_tick_rate) return 0;
+    if (!AUDIO) return 0;
+    var d = audioTickDivisor();
+    if (d > 0) {
+      return Math.round(AUDIO.first_music_callback_sample +
+        tick * d / TICK_BASE_HZ * AUDIO.sample_rate);
+    }
+    if (!AUDIO.effective_tick_rate) return 0;
     return Math.round(AUDIO.first_music_callback_sample +
       tick / AUDIO.effective_tick_rate * AUDIO.sample_rate);
   }
   function sampleToTick(sample) {
-    if (!AUDIO || !AUDIO.effective_tick_rate) return 0;
+    if (!AUDIO) return 0;
+    var d = audioTickDivisor();
+    if (d > 0) {
+      return (sample - AUDIO.first_music_callback_sample) / AUDIO.sample_rate * TICK_BASE_HZ / d;
+    }
+    if (!AUDIO.effective_tick_rate) return 0;
     return (sample - AUDIO.first_music_callback_sample) / AUDIO.sample_rate * AUDIO.effective_tick_rate;
   }
   function currentSample() {
@@ -467,7 +497,7 @@
     if (!AUDIO || !AUDIO.available) { rangeEl.textContent = ""; return; }
     var text = "Rendered " + fmt(AUDIO.rendered_ticks) + " of " + fmt(AUDIO.total_ticks) +
       " ticks · startup offset " + fmt(AUDIO.first_music_callback_sample) + " samples (" +
-      fmt(AUDIO.first_music_callback_seconds, 4) + " s) · quantized tick rate " +
+      fmt(AUDIO.first_music_callback_seconds, 4) + " s) · effective tick rate " +
       fmt(AUDIO.effective_tick_rate) + " Hz.";
     if (AUDIO.truncated) {
       text += " The capture is a bounded prefix: audition is disabled beyond the rendered range.";
@@ -644,15 +674,18 @@
     var source = REVIEW.source || {};
     var digest = REVIEW.event_digest || {};
     var engine = REVIEW.engine || {};
-    var songSeconds = CLOCK.effective_tick_rate
-      ? TOTAL / CLOCK.effective_tick_rate : 0;
+    var divisor = audioTickDivisor();
+    var songSeconds = divisor > 0
+      ? TOTAL * divisor / TICK_BASE_HZ
+      : (CLOCK.effective_tick_rate ? TOTAL / CLOCK.effective_tick_rate : 0);
     var rows = [
       ["Score id", DATA.score_id || "—"],
       ["Channels", CHANNELS.map(function (c) { return c.name; }).join(", ")],
       ["Total ticks", TOTAL],
       ["Playback", REVIEW.loop ? "Loop whole song" : "Play once"],
       ["Requested tick rate", CLOCK.tick_rate],
-      ["Effective tick rate (quantized)", CLOCK.effective_tick_rate],
+      ["Timer divider (base events/tick)", divisor || "—"],
+      ["Effective tick rate", CLOCK.effective_tick_rate],
       ["Ticks per beat", CLOCK.ticks_per_beat],
       ["Beats per bar", CLOCK.beats_per_bar],
       ["Effective BPM", fmt(CLOCK.effective_bpm, 3)],

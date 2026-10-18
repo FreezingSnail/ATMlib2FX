@@ -49,6 +49,7 @@ from .score import (
     TOOL_NAME,
     TOOL_VERSION,
     library_version,
+    tick_divisor,
 )
 
 VIEWER_DIR = Path(__file__).resolve().parent / "viewer"
@@ -304,6 +305,13 @@ def load_audio_preview(preview_dir: str, current_review: dict) -> tuple[dict | N
     render_meta = report.get("render") or {}
     analysis = audio_meta.get("analysis") or {}
     first_cb = audio_meta.get("first_music_callback_sample")
+    report_clock = report.get("clock") or {}
+    requested_rate = report_clock.get("tick_rate")
+    divisor = (
+        tick_divisor(requested_rate)
+        if isinstance(requested_rate, int) and not isinstance(requested_rate, bool) and requested_rate > 0
+        else None
+    )
     descriptor = {
         "available": True,
         "format": audio_meta.get("format") or CAPTURE_FORMAT,
@@ -318,8 +326,9 @@ def load_audio_preview(preview_dir: str, current_review: dict) -> tuple[dict | N
             round(first_cb / SAMPLE_RATE, 9) if first_cb is not None else None
         ),
         "first_music_callback_measured": bool(audio_meta.get("first_music_callback_measured")),
-        "effective_tick_rate": (report.get("clock") or {}).get("effective_tick_rate"),
-        "ticks_per_beat": (report.get("clock") or {}).get("ticks_per_beat"),
+        "effective_tick_rate": report_clock.get("effective_tick_rate"),
+        "tick_divisor": divisor,
+        "ticks_per_beat": report_clock.get("ticks_per_beat"),
         "beats_per_bar": (report.get("clock") or {}).get("beats_per_bar"),
         "total_ticks": report.get("total_ticks"),
         "rendered_ticks": render_meta.get("rendered_ticks"),
@@ -493,6 +502,7 @@ def inspect(
             "sample_count": audio["sample_count"],
             "first_music_callback_sample": audio["first_music_callback_sample"],
             "effective_tick_rate": audio["effective_tick_rate"],
+            "tick_divisor": audio.get("tick_divisor"),
             "rendered_ticks": audio["rendered_ticks"],
             "total_ticks": audio["total_ticks"],
             "truncated": audio["truncated"],

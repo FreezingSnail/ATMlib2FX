@@ -28,4 +28,26 @@ for(const patch of [{truncated:true},{first_music_callback_measured:false},{firs
  assert.equal(result.available,false); assert.equal(result.bytes,wav);
 }
 assert.equal(window.ATMlibLoop.prepare(wav.subarray(0,70),meta).available,false);
+
+// Nondivisor tempo: an explicit integer divider takes precedence over the
+// (rounded) effective rate when computing the exact cycle length.
+function makeWav(count, rate) {
+  const bytes = new Uint8Array(44 + count * 2);
+  const view = new DataView(bytes.buffer);
+  function tag(at, value) { for (let i = 0; i < value.length; i++) bytes[at + i] = value.charCodeAt(i); }
+  tag(0, 'RIFF'); view.setUint32(4, bytes.length - 8, true); tag(8, 'WAVE');
+  tag(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true); view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  tag(36, 'data'); view.setUint32(40, count * 2, true);
+  return bytes;
+}
+const ndWav = makeWav(900, 1000);
+const ndBase = { sample_count: 900, sample_rate: 1000, total_ticks: 200, first_music_callback_sample: 10, first_music_callback_measured: true, truncated: false };
+const ndExact = window.ATMlibLoop.prepare(ndWav, { ...ndBase, effective_tick_rate: 2000 / 7, tick_divisor: 7 });
+assert.equal(ndExact.available, true);
+assert.equal(ndExact.endSample, 10 + 700); // 200 ticks * 7/2000 s * 1000 Hz
+const ndRounded = window.ATMlibLoop.prepare(ndWav, { ...ndBase, effective_tick_rate: 285 });
+assert.equal(ndRounded.available, true);
+assert.equal(ndRounded.endSample, 10 + 702); // rounded 2000 // 7 = 285 Hz model
 console.log('Loop PCM checks passed (sample boundaries, RIFF chunks, immutable capture, bounded preview).');

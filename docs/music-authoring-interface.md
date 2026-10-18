@@ -32,7 +32,7 @@ Do not require a model to generate C macros, offsets, bytecode or packed flags.
 | Three pulse oscillators and one noise oscillator | `src/osc.c`, oscillator sections | Name channels `pulse0`, `pulse1`, `pulse2`, `noise`; do not promise triangle, saw or samples. Comments in some example scores describe different waveforms. |
 | Note IDs 1–63 span C2–D7; 0 is the note-off command | `src/atm_cmd_constants.h` | Accept named pitches in that range. Reject out-of-range pitches rather than letting the engine mask indices. |
 | Volume and pulse modulation are byte quantities | `src/osc.h`, `src/cmd_parse.c` | Use explicit integer 0–255 units. Start with conservative authored levels; do not silently normalize. |
-| Tempo commands request a tick rate, not BPM | `src/osc.c:osc_set_tick_rate`, `src/osc.h` | Use ticks as the canonical clock and report quantized musical tempo. Rates below 8 are unsupported by the timer divider. |
+| Tempo commands request a tick rate, not BPM | `src/osc.c:osc_set_tick_rate`, `src/osc.h` | Use ticks as the canonical clock; report the timer-quantized effective rate and derived BPM. Rates below 8 are unsupported by the timer divider. |
 | Slides share one per-channel effect slot; LFOs share another | `src/atm_synth.h`, `src/cmd_parse.c` | Advanced effect syntax must expose conflicts and cannot promise independent simultaneous slide/LFO families. |
 | The current converter includes a fixed `song.h` fixture | `research/fx/tools/fx_compile_stream.c` | It is not a general score reader or authoring compiler. Introduce a validated host intermediate representation. |
 | Existing host traces stub the oscillator/timer layer | `research/fx/footprint_baseline/trace/trace_main.c` | Traces are useful correctness evidence, but do not supply an audio preview. |
@@ -102,10 +102,15 @@ contract illustration, not a claimed playable artifact.
   `[A-Za-z_][A-Za-z0-9_]*` with maximum length 64.
 - Require `clock.tick_rate` in 8–255, `ticks_per_beat` in 1–256, and
   `beats_per_bar` in 1–16. Do not default a missing clock. `tick_rate` requests
-  the library rate; actual rate is `2000 / floor(2000 / tick_rate)` for the
-  current timer configuration. Requested 255 yields about 285.7 Hz.
+  the library rate; the *actual* rate is the quotient
+  `2000 / floor(2000 / tick_rate)` for the current timer configuration.
+  Requested 255 yields exactly `2000/7 ≈ 285.714 Hz`, not a rounded 285.
+  Reported durations derive from the integer divider, not the quotient:
+  `seconds = total_ticks * floor(2000 / tick_rate) / 2000`.
 - Musical metadata does not change playback: report
   `effective_bpm = effective_tick_rate * 60 / ticks_per_beat`.
+  The device divider (`src/osc.c:osc_set_tick_rate`) is untouched; only host
+  time reporting is corrected.
   A future BPM convenience input must show its chosen integer mapping and
   error; never reinterpret BPM as the engine tempo byte.
 - Require pattern `ticks` to be a positive integer. `events` are ordered by
@@ -408,7 +413,8 @@ implements the local HTML/JavaScript track review this plan proposed:
 - With `--audio-preview` the report's source **and** canonical event digests must
   match the current score, and the WAV metadata/identity must validate; a stale
   preview is rejected and only a warning is emitted. Playhead sync uses the
-  measured 1045-sample startup offset and the effective quantized tick rate; the
+  measured startup offset and the exact effective tick rate (the integer timer
+  divider, `2000 / floor(2000 / tick_rate)`); the
   finite capture (and truncation) bounds audition, and the post-end DC rail
   (≈ −2000, zero AC) is described as acoustically silent rather than neutral.
 - Lane checkboxes are visibility only and never mute/solo; the WAV is a mono

@@ -19,28 +19,32 @@ Its pinned static report misleadingly lists render/inspect as unavailable;
 those commands work and report their own capabilities. FX export remains
 unavailable. Check actual command diagnostics before concluding a tool is absent.
 
-Two known discrepancies need care until their fixes land:
+One known discrepancy needs care until its fix lands:
 
-- The timer's true rate is `2000 / floor(2000 / requested_tick_rate)`, while
-  `score.py:effective_tick_rate` currently rounds the final quotient down.
-  Prefer exact supported clocks such as 50 or 100 Hz for ordinary compositions.
-  A task requiring other clocks must account for the reporting discrepancy;
-  do not silently rewrite the engine clock. See Bead ATMlib2FX-3ii.8.
 - The public JSON schema currently omits the optional root `loop` boolean that
   the CLI validator supports. Use CLI validation and inspect the actual code;
   do not remove requested looping just to satisfy the stale schema. Tracked in
   Bead ATMlib2FX-9jo.
+
+`score.py:effective_tick_rate` now reports the timer's true rate
+`2000 / floor(2000 / requested_tick_rate)` (an integer when the requested rate
+is a divisor of 2000, e.g. 50 Hz; the real quotient otherwise). Host durations
+derive from the integer divider `floor(2000 / tick_rate)`, not the rounded
+quotient (Bead ATMlib2FX-3ii.8). The device timer divider is unchanged, so
+prefer exact supported clocks such as 50 or 100 Hz for ordinary compositions;
+other clocks now report accurately.
 
 Recheck these discrepancies against current code when the skill is used.
 
 ## Real tempo changes
 
 At an exact 50 Hz clock, 25 ticks/beat means 120 BPM; 30 means 100 BPM.
-`seconds = total_ticks / effective_tick_rate`. To preserve musical shape while
-changing speed, scale pattern lengths, event onsets and **gate end times** with
-the beat grid, then derive durations from the rounded ends. Revalidate rounding
-for collisions, zero-length notes and pattern overflow. Changing only
-`ticks_per_beat` relabels the grid without changing playback timing.
+`seconds = total_ticks * floor(2000 / tick_rate) / 2000`. To preserve musical
+shape while changing speed, scale pattern lengths, event onsets and **gate end
+times** with the beat grid, then derive durations from the rounded ends.
+Revalidate rounding for collisions, zero-length notes and pattern overflow.
+Changing only `ticks_per_beat` relabels the grid without changing playback
+timing.
 
 ## Render and review
 

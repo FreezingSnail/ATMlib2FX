@@ -22,9 +22,13 @@ if _TOOLS not in sys.path:
 from music_authoring.score import (  # noqa: E402
     NOTE_MAX_INDEX,
     NOTE_MIN_INDEX,
+    effective_tick_rate,
     note_index,
     note_range_problem,
     parse_json_bytes,
+    tick_divisor,
+    tick_interval_seconds,
+    ticks_to_seconds,
 )
 from music_authoring.validate import (  # noqa: E402
     load_and_validate,
@@ -97,13 +101,31 @@ class ValidContractTests(unittest.TestCase):
         self.assertEqual(note_range_problem("C1")[0], "PITCH_RANGE")
         self.assertEqual(note_range_problem("Db4")[0], "INVALID_NOTE")
 
-    def test_effective_tick_rate_quantization(self):
+    def test_effective_tick_rate_reports_real_quotient(self):
+        # Divisor tempos report exactly; the quotient is an int.
+        for rate in (8, 50, 100, 125):
+            self.assertEqual(effective_tick_rate(rate), rate)
+        # Nondivisor tempos report the real quotient, never the rounded integer.
+        self.assertEqual(tick_divisor(255), 7)
+        self.assertEqual(effective_tick_rate(255), 2000 / 7)  # 285.714..., not 285
+        self.assertEqual(tick_divisor(37), 54)
+        self.assertEqual(effective_tick_rate(37), 2000 / 54)  # 37.037..., not 37
+        # Seconds derive from the divider, not the rounded Hz.
+        self.assertEqual(tick_interval_seconds(255), 7 / 2000)
+        self.assertEqual(ticks_to_seconds(2000, 255), 7.0)
+
+    def test_nondivisor_clock_exposes_exact_timing(self):
         score = base_score()
         score["clock"]["tick_rate"] = 255
         parsed, diagnostics = validate_obj(score)
         self.assertEqual(diagnostics, [])
-        # 2000 // (2000 // 255) = 2000 // 7 = 285
-        self.assertEqual(parsed.clock.effective_tick_rate, 285)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.clock.tick_divisor, 7)
+        self.assertEqual(parsed.clock.tick_interval_seconds, 7 / 2000)
+        self.assertEqual(parsed.clock.effective_tick_rate, 2000 / 7)
+        self.assertEqual(parsed.clock.seconds_for_ticks(2000), 7.0)
+        # BPM is derived from the real quotient, not the rounded rate.
+        self.assertAlmostEqual(parsed.clock.effective_bpm, (2000 / 7) * 60 / 25)
 
 
 class StructuralRejectionTests(unittest.TestCase):

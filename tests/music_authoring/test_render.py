@@ -58,26 +58,33 @@ def _make_wav(samples: list[int], rate: int = SAMPLE_RATE, channels: int = 1, bi
 
 class DurationPlanTests(unittest.TestCase):
     def test_default_is_bounded_and_not_truncated_for_short_song(self):
-        plan = duration_plan(total_ticks=32, effective_tick_rate=50, seconds=None)
+        plan = duration_plan(total_ticks=32, tick_divisor=40, seconds=None)
         self.assertEqual(plan["requested_seconds"], DEFAULT_SECONDS)
         self.assertFalse(plan["truncated"])
         self.assertAlmostEqual(plan["effective_render_seconds"], 0.64 + 0.5, places=6)
 
+    def test_nondivisor_tempo_uses_exact_divider(self):
+        # Requested 255 Hz -> divider 7 -> 2000 ticks span exactly 7 s (not
+        # 2000 / 285 Hz). The render window derives from the divider.
+        plan = duration_plan(total_ticks=2000, tick_divisor=7, seconds=None)
+        self.assertEqual(plan["song_seconds"], 7.0)
+        self.assertAlmostEqual(plan["effective_render_seconds"], 7.0 + 0.5, places=9)
+
     def test_rejects_over_hard_max(self):
         with self.assertRaises(RenderError) as ctx:
-            duration_plan(32, 50, MAX_SECONDS + 1)
+            duration_plan(32, 40, MAX_SECONDS + 1)
         self.assertEqual(ctx.exception.code, "DURATION_CAP")
         self.assertEqual(ctx.exception.exit_code, 2)
 
     def test_rejects_nonpositive(self):
         for bad in (0.0, -3.0):
             with self.assertRaises(RenderError) as ctx:
-                duration_plan(32, 50, bad)
+                duration_plan(32, 40, bad)
             self.assertEqual(ctx.exception.code, "DURATION_CAP")
 
     def test_reports_truncation_when_window_shorter_than_song(self):
         # 600 ticks at 50 Hz = 12 s song; 1 s window truncates it.
-        plan = duration_plan(total_ticks=600, effective_tick_rate=50, seconds=1.0)
+        plan = duration_plan(total_ticks=600, tick_divisor=40, seconds=1.0)
         self.assertTrue(plan["truncated"])
         self.assertIn("1", plan["truncation_reason"])
         self.assertEqual(plan["render_ms"], 1000)
@@ -147,7 +154,7 @@ class AnalyzeCaptureTests(unittest.TestCase):
         samples += [0, 500, -500, 1200, -1200] * (music_len // 5 + 1)
         samples = samples[: first_cb + music_len]
         samples += [-2000] * (SAMPLE_RATE // 4)  # constant DC rail after end
-        analysis = analyze_capture(samples, first_cb, 32, 50)
+        analysis = analyze_capture(samples, first_cb, 32, 40)
         self.assertEqual(analysis["neutral_level"], NEUTRAL_LEVEL)
         self.assertEqual(analysis["first_music_callback_sample"], first_cb)
         self.assertTrue(analysis["checks"]["pre_music_steady_near_neutral"])
@@ -163,7 +170,7 @@ class RenderReportIdentityTests(unittest.TestCase):
         assert cls.score is not None, diagnostics
         cls.lowered = lower(cls.score)
         cls.payload = build_review_payload(cls.score, cls.lowered)
-        cls.plan = duration_plan(cls.lowered.total_ticks, cls.score.clock.effective_tick_rate, 8.0)
+        cls.plan = duration_plan(cls.lowered.total_ticks, cls.score.clock.tick_divisor, 8.0)
         cls.wav = _make_wav([0] * 10)
         cls.info = parse_wav_bytes(cls.wav)
         capture = {

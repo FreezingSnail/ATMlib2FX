@@ -4,6 +4,16 @@
  */
 (function (root) {
   "use strict";
+  var TICK_BASE_HZ = 2000;
+  /* Exact cycle length: prefer the integer timer divider (length =
+   * total_ticks * divisor / 2000), falling back to the reported rate for older
+   * previews that predate `tick_divisor`. */
+  function cycleSamples(audio) {
+    if (Number.isInteger(audio.tick_divisor) && audio.tick_divisor > 0) {
+      return Math.round(audio.total_ticks * audio.tick_divisor / TICK_BASE_HZ * audio.sample_rate);
+    }
+    return Math.round(audio.total_ticks / audio.effective_tick_rate * audio.sample_rate);
+  }
   function prepare(bytes, audio) {
     var fallback = { bytes: bytes, startSample: 0, endSample: audio.sample_count, available: false };
     if (audio.truncated || !audio.first_music_callback_measured ||
@@ -11,7 +21,7 @@
         audio.first_music_callback_sample < 0 || !(audio.total_ticks > 0) ||
         !(audio.effective_tick_rate > 0)) return fallback;
     var start = audio.first_music_callback_sample;
-    var length = Math.round(audio.total_ticks / audio.effective_tick_rate * audio.sample_rate);
+    var length = cycleSamples(audio);
     if (length < 1 || start + length > audio.sample_count) return fallback;
     var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     function tag(at) { return String.fromCharCode.apply(null, bytes.subarray(at, at + 4)); }

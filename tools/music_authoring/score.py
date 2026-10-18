@@ -141,13 +141,48 @@ def note_range_problem(token: str) -> tuple[str | None, int | None]:
     return None, index
 
 
-def effective_tick_rate(requested: int) -> int:
-    """Timer-quantized tick rate: ``2000 // (2000 // requested)``."""
-    return TICK_BASE_HZ // (TICK_BASE_HZ // requested)
+def tick_divisor(requested: int) -> int:
+    """Integer AVR timer divider: base events per callback.
+
+    ``osc_set_tick_rate`` programs ``div = OSC_SAMPLERATE/OSC_ISR_PRESCALER_DIV/rate - 1``
+    (``src/osc.c``), so callbacks fire every ``TICK_BASE_HZ // requested`` base
+    events. This integer divider is the exact timing unit; the callback rate it
+    produces is the *quotient* ``TICK_BASE_HZ / tick_divisor`` (fractional when
+    the requested rate is not a divisor of ``TICK_BASE_HZ``).
+    """
+    return TICK_BASE_HZ // requested
+
+
+def effective_tick_rate(requested: int) -> int | float:
+    """Actual callback rate (Hz): ``TICK_BASE_HZ / tick_divisor``.
+
+    This is the real timer frequency, not the rounded ``TICK_BASE_HZ // divisor``
+    (``255 -> 2000/7 = 285.714...``). An ``int`` is returned when the quotient is
+    exact (divisor divides ``TICK_BASE_HZ``, e.g. ``50 -> 40 -> 50``) so existing
+    exact metadata stays byte-identical; otherwise the true fractional quotient.
+    """
+    divisor = tick_divisor(requested)
+    if TICK_BASE_HZ % divisor == 0:
+        return TICK_BASE_HZ // divisor
+    return TICK_BASE_HZ / divisor
+
+
+def tick_interval_seconds(requested: int) -> float:
+    """Exact seconds between callbacks: ``tick_divisor / TICK_BASE_HZ``."""
+    return tick_divisor(requested) / TICK_BASE_HZ
+
+
+def ticks_to_seconds(total_ticks: int, requested: int) -> float:
+    """Exact musical duration derived from the divider, not the rounded Hz.
+
+    ``total_ticks * tick_divisor / TICK_BASE_HZ`` (e.g. 2000 ticks at 255 Hz span
+    exactly 7 s, whereas dividing by the rounded 285 Hz would not).
+    """
+    return total_ticks * tick_divisor(requested) / TICK_BASE_HZ
 
 
 def effective_bpm(requested: int, ticks_per_beat: int) -> float:
-    return effective_tick_rate(requested) * 60.0 / ticks_per_beat
+    return (TICK_BASE_HZ / tick_divisor(requested)) * 60.0 / ticks_per_beat
 
 
 def library_version() -> str:
@@ -170,8 +205,19 @@ class Clock:
     beats_per_bar: int
 
     @property
-    def effective_tick_rate(self) -> int:
+    def tick_divisor(self) -> int:
+        return tick_divisor(self.tick_rate)
+
+    @property
+    def effective_tick_rate(self) -> int | float:
         return effective_tick_rate(self.tick_rate)
+
+    @property
+    def tick_interval_seconds(self) -> float:
+        return tick_interval_seconds(self.tick_rate)
+
+    def seconds_for_ticks(self, total_ticks: int) -> float:
+        return ticks_to_seconds(total_ticks, self.tick_rate)
 
     @property
     def effective_bpm(self) -> float:

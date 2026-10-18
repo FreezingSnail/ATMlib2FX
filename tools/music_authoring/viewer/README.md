@@ -92,19 +92,27 @@ The adjacent JSON (same stem as `--out`, `.json`) is exactly the canonical
 
 `available`, `format`, `sample_rate`, `channels`, `bit_depth`, `sample_count`,
 `neutral_level`, `sound_gain`, `first_music_callback_sample`/`_seconds`/
-`_measured`, `effective_tick_rate`, `ticks_per_beat`, `beats_per_bar`,
-`total_ticks`, `rendered_ticks`, `truncated`, `truncation_reason`, `song_seconds`,
-`post_end_dc_level`, `post_end_is_ac_silent`, `wav_name`, `wav_sha256`,
-`wav_bytes`, `report_sha256`, `matched_source_sha256`,
-`matched_event_digest_hex`, `limitations`, `wav_base64`.
+`_measured`, `effective_tick_rate`, `tick_divisor`, `ticks_per_beat`,
+`beats_per_bar`, `total_ticks`, `rendered_ticks`, `truncated`,
+`truncation_reason`, `song_seconds`, `post_end_dc_level`,
+`post_end_is_ac_silent`, `wav_name`, `wav_sha256`, `wav_bytes`, `report_sha256`,
+`matched_source_sha256`, `matched_event_digest_hex`, `limitations`,
+`wav_base64`.
 
-Playhead sync uses the measured first-music-callback offset and the effective
-quantized tick rate:
+`effective_tick_rate` is the *actual* timer quotient `2000 / tick_divisor` (an
+integer for divisor tempos such as 50 Hz, fractional otherwise). Playhead sync
+uses the measured first-music-callback offset and the exact integer divider
+(`tick_divisor`, base events per tick at 2000 base events/second):
 
 ```
-sample(tick) = first_music_callback_sample + round(tick / effective_tick_rate * sample_rate)
-tick(sample) = (sample - first_music_callback_sample) / sample_rate * effective_tick_rate
+sample(tick) = first_music_callback_sample + round(tick * tick_divisor / 2000 * sample_rate)
+tick(sample) = (sample - first_music_callback_sample) / sample_rate * 2000 / tick_divisor
 ```
+
+Previews rendered before `tick_divisor` existed fall back to
+`tick / effective_tick_rate * sample_rate`. Devices still program the identical
+integer divider (`src/osc.c:osc_set_tick_rate`); nothing about playback timing
+changed.
 
 Audition is bounded to the recorded capture (`sample_count`, or
 `rendered_ticks` when truncated); regions outside it are shaded and marked, and

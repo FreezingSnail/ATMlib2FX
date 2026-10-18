@@ -176,8 +176,13 @@ def _run(argv: list[str], *, cwd: Path | None = None, env: dict | None = None, t
 # --------------------------------------------------------------------------- #
 # Pure helpers (unit-testable without AVR/absim)
 # --------------------------------------------------------------------------- #
-def duration_plan(total_ticks: int, effective_tick_rate: int, seconds: float | None) -> dict:
-    """Decide the bounded render window and whether the song is truncated."""
+def duration_plan(total_ticks: int, tick_divisor: int, seconds: float | None) -> dict:
+    """Decide the bounded render window and whether the song is truncated.
+
+    ``tick_divisor`` is the integer AVR divider (``Clock.tick_divisor``); all
+    durations derive from ``tick_divisor / TICK_BASE_HZ`` so nondivisor tempos
+    keep exact timing (255 Hz -> 7/2000 s per tick) instead of a rounded Hz.
+    """
     requested = DEFAULT_SECONDS if seconds is None else float(seconds)
     if not (requested > 0.0) or requested > MAX_SECONDS:
         raise RenderError(
@@ -186,11 +191,16 @@ def duration_plan(total_ticks: int, effective_tick_rate: int, seconds: float | N
             f"Choose --seconds between 0 and {MAX_SECONDS:g}.",
             exit_code=2,
         )
-    song_seconds = total_ticks / float(effective_tick_rate) if effective_tick_rate else 0.0
+    if tick_divisor:
+        song_seconds = total_ticks * tick_divisor / TICK_BASE_HZ
+        ticks_per_second = TICK_BASE_HZ / tick_divisor
+    else:
+        song_seconds = 0.0
+        ticks_per_second = 0.0
     needed = song_seconds + TAIL_SECONDS
     render_seconds = min(requested, needed)
     truncated = needed > requested + 1e-9
-    rendered_ticks = min(total_ticks, int(render_seconds * effective_tick_rate + 1e-9))
+    rendered_ticks = min(total_ticks, int(render_seconds * ticks_per_second + 1e-9))
     return {
         "requested_seconds": requested,
         "max_seconds": MAX_SECONDS,
@@ -290,10 +300,10 @@ def compare_source_identity(payload: dict, expect: dict) -> list[Diagnostic]:
     return diagnostics
 
 
-def _tick_to_sample(tick: int, first_callback_sample: int, effective_tick_rate: int) -> int:
-    if not effective_tick_rate:
+def _tick_to_sample(tick: int, first_callback_sample: int, tick_divisor: int) -> int:
+    if not tick_divisor:
         return first_callback_sample
-    return first_callback_sample + int(round(tick / effective_tick_rate * SAMPLE_RATE))
+    return first_callback_sample + int(round(tick * tick_divisor / TICK_BASE_HZ * SAMPLE_RATE))
 
 
 def gate_timeline(spans, total_ticks: int) -> list[bool]:
@@ -336,7 +346,7 @@ def _window_measure(samples: list[int], lo: int, hi: int, settle_guard: int = 12
     }
 
 
-def _measure_gate_regions(samples, spans, total_ticks, first_cb, eff_rate, cap: int = 256) -> dict:
+def _measure_gate_regions(samples, spans, total_ticks, first_cb, tick_divisor, cap: int = 256) -> dict:
     active = gate_timeline(spans, total_ticks)
     regions = []
     i = 0
@@ -344,8 +354,8 @@ def _measure_gate_regions(samples, spans, total_ticks, first_cb, eff_rate, cap: 
         j = i
         while j < len(active) and active[j] == active[i]:
             j += 1
-        lo = _tick_to_sample(i, first_cb, eff_rate)
-        hi = _tick_to_sample(j, first_cb, eff_rate)
+        lo = _tick_to_sample(i, first_cb, tick_divisor)
+        hi = _tick_to_sample(j, first_cb, tick_divisor)
         measure = _window_measure(samples, lo, hi)
         measure.update({"start_tick": i, "end_tick": j, "active": active[i]})
         regions.append(measure)
@@ -353,11 +363,11 @@ def _measure_gate_regions(samples, spans, total_ticks, first_cb, eff_rate, cap: 
     return {"count": len(regions), "truncated": len(regions) >= cap, "regions": regions}
 
 
-def _measure_note_windows(samples, spans, first_cb, eff_rate, cap: int = 512) -> dict:
+def _measure_note_windows(samples, spans, first_cb, tick_divisor, cap: int = 512) -> dict:
     windows = []
     for span in spans[:cap]:
-        lo = _tick_to_sample(span.start_tick, first_cb, eff_rate)
-        hi = _tick_to_sample(span.gate_end_tick, first_cb, eff_rate)
+        lo = _tick_to_sample(span.start_tick, first_cb, tick_divisor)
+        hi = _tick_to_sample(span.gate_end_tick, first_cb, tick_divisor)
         measure = _window_measure(samples, lo, hi)
         measure.update(
             {
@@ -373,11 +383,14 @@ def _measure_note_windows(samples, spans, first_cb, eff_rate, cap: int = 512) ->
     return {"count": len(windows), "truncated": len(spans) > cap, "notes": windows}
 
 
-def analyze_capture(samples: list[int], first_callback_sample: int, total_ticks: int, effective_tick_rate: int, spans=None) -> dict:
+def analyze_capture(samples: list[int], first_callback_sample: int, total_ticks: int, tick_divisor: int, spans=None) -> dict:
     """Measure silence/level facts from the captured PCM relative to neutral."""
     n = len(samples)
     peak = max((abs(s) for s in samples), default=0)
-    musical_len = int(round(total_ticks / effective_tick_rate * SAMPLE_RATE)) if effective_tick_rate else 0
+    if tick_divisor:
+        musical_len = int(round(total_ticks * tick_divisor / TICK_BASE_HZ * SAMPLE_RATE))
+    else:
+        musical_len = 0
     music_start = max(0, min(first_callback_sample, n))
     music_end = min(n, music_start + musical_len)
     guard = int(round(0.05 * SAMPLE_RATE))  # skip the PWM-stop transition
@@ -397,8 +410,8 @@ def analyze_capture(samples: list[int], first_callback_sample: int, total_ticks:
     gate_regions = None
     note_windows = None
     if spans is not None:
-        gate_regions = _measure_gate_regions(samples, spans, total_ticks, music_start, effective_tick_rate)
-        note_windows = _measure_note_windows(samples, spans, music_start, effective_tick_rate)
+        gate_regions = _measure_gate_regions(samples, spans, total_ticks, music_start, tick_divisor)
+        note_windows = _measure_note_windows(samples, spans, music_start, tick_divisor)
 
     # Steady in-song silence level (PWM running at the DC offset) vs the
     # post-end PWM-off rail; both are zero-AC but differ from neutral 0.
@@ -464,7 +477,7 @@ def build_render_report(
         samples,
         int(capture.get("first_callback_sample") or 0),
         lowered.total_ticks,
-        score.clock.effective_tick_rate,
+        score.clock.tick_divisor,
         spans=lowered.spans,
     )
     analysis.pop("samples_data", None)
@@ -623,7 +636,7 @@ def render(
         return ({"ok": False, "diagnostics": [Diagnostic("TOOL_ERROR", "", str(exc), "Check the score.").as_dict()], "artifacts": {}}, 3)
 
     try:
-        plan = duration_plan(lowered.total_ticks, score.clock.effective_tick_rate, seconds)
+        plan = duration_plan(lowered.total_ticks, score.clock.tick_divisor, seconds)
     except RenderError as exc:
         return ({"ok": False, "diagnostics": [exc.diagnostic().as_dict()], "artifacts": {}}, exc.exit_code)
 
