@@ -118,6 +118,7 @@ enum atm_single_byte_cmd_id_constants {
 	ATM_CMD_1P_SET_VOLUME,
 	ATM_CMD_1P_NOISE_RETRIG_ON,
 	ATM_CMD_1P_SET_MOD,
+	ATM_CMD_1P_SET_CUE,
 };
 
 enum atm_parametrised_cmd_id_constants {
@@ -173,6 +174,12 @@ enum atm_parametrised_cmd_constants {
 
 #define ATM_CMD_M_SET_VOLUME(p1) ATM_CMD_1P_SET_VOLUME, (p1)
 #define ATM_CMD_M_SET_MOD(p1) ATM_CMD_1P_SET_MOD, (p1)
+
+/* Store a game cue byte (2 bytes in the stream: command id + value). The value
+ * is latched into the shared atmlib_state.cue byte and read back by
+ * atm_synth_get_cue() (value + clear) or atm_synth_check_cue() (compare, no
+ * clear) on the sketch side, so games can sync events to the music. */
+#define ATM_CMD_M_CUE(p1) ATM_CMD_1P_SET_CUE, ((uint8_t)(p1))
 
 #define ATM_CMD_M_SET_LOOP_PATTERN(p1) ATM_CMD_P_SET_LOOP_PATTERN, (p1)
 

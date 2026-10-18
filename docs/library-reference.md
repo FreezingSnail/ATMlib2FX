@@ -248,6 +248,7 @@ ATM_CMD_1P_ADD_TEMPO         - Add tempo
 ATM_CMD_1P_SET_VOLUME        - Set Volume
 ATM_CMD_1P_NOISE_RETRIG_ON   - Noise re-trigger
 ATM_CMD_1P_SET_MOD           - Set square wave duty cycle
+ATM_CMD_1P_SET_CUE           - Set game cue byte
 ```
 
 #### N bytes command Macros (do not use directly, see the following Public Command Macros section)
@@ -568,6 +569,30 @@ P1
     Range : [0:255] (u8)
     Note  : Values from 0 to 255 map to 0%/100% duty cycle, the default 0x7F is 50%
 ```
+
+##### Cue
+
+```
+Cue - latch a game cue byte for the sketch to poll
+
+Macros         : ATM_CMD_M_CUE(cue_id)
+
+Parameter count: 1
+
+P1
+    Size   : 1 byte
+    Name   : Cue identifier
+    Range  : [0:255] (u8)
+    Note   : 0 = no cue; command id 0x77, 2 bytes in the score/stream
+             (command id plus value)
+```
+
+Read the latched value with `atm_synth_get_cue()`, which returns it and clears
+it (`0` = none), or compare without clearing with `atm_synth_check_cue(id)`,
+which returns `1` when the current cue equals `id`. Score, sound effects and FX
+backends all latch into the single shared `cue` byte in `struct atm_synth_state`,
+so the most recent `ATM_CMD_M_CUE` wins and a cue emitted by a sound effect stays
+observable after the sound effect stops.
 
 ##### Setup pattern loop
 

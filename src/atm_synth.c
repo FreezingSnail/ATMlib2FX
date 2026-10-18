@@ -125,6 +125,8 @@ void atm_synth_setup(void)
 	osc_setup();
 	/* no channel is active */
 	atmlib_state.channel_active_mute = 0;
+	/* no cue pending */
+	atmlib_state.cue = 0;
 	/* take over all oscillators */
 	for (unsigned n = 0; n < ARRAY_SIZE(channels); n++) {
 		channels[n].dst_osc_params = &osc_params_array[n];
@@ -236,6 +238,21 @@ void atm_synth_play_ext(const struct atm_synth_ext *synth_ext)
 uint8_t atm_synth_is_score_stopped(void)
 {
 	return !(atmlib_state.channel_active_mute & 0xF0);
+}
+
+/* Cue channel (ATM_CMD_M_CUE). The single shared atmlib_state.cue byte is
+ * written by process_1p_cmd() for every backend (PROGMEM score/SFX, compiled FX
+ * stream, compact FX), matching upstream's score/SFX-shared last-cue semantics. */
+uint8_t atm_synth_get_cue(void)
+{
+	const uint8_t cue = atmlib_state.cue;
+	atmlib_state.cue = 0;
+	return cue;
+}
+
+uint8_t atm_synth_check_cue(uint8_t id)
+{
+	return atmlib_state.cue == id;
 }
 
 #if !ATM_HAS_FX_STREAM_BACKEND

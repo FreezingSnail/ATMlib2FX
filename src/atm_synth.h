@@ -80,6 +80,16 @@ uint8_t atm_synth_is_score_stopped(void);
 void atm_synth_set_score_paused(const uint8_t paused);
 uint8_t atm_synth_get_score_paused(void);
 
+/* Cue channel (ATM_CMD_M_CUE). Sketches poll these to sync game events to the
+ * music. Both operate on the single shared cue byte: score, SFX and FX backends
+ * latch into the same byte, so the most recent ATM_CMD_M_CUE wins. */
+
+/* Return the current cue value and clear it (0 = none). */
+uint8_t atm_synth_get_cue(void);
+
+/* Return 1 when the current cue equals id, without clearing it. */
+uint8_t atm_synth_check_cue(uint8_t id);
+
 void atm_synth_grab_channel(const uint8_t channel_index, struct osc_params *save);
 void atm_synth_release_channel(const uint8_t channel_index);
 
@@ -127,6 +137,12 @@ struct atm_synth_state {
 	//                               ||└------>  5  channel 1 is Active (0 = false / 1 = true)
 	//                               |└------->  6  channel 2 is Active (0 = false / 1 = true)
 	//                               └-------->  7  channel 3 is Active (0 = false / 1 = true)
+
+	/* Last cue byte written by ATM_CMD_M_CUE, or 0 for none. Public since
+	 * bece748: score, SFX and FX backends all latch into this single byte
+	 * (upstream semantics: score and SFX share the last-cue byte). Read and
+	 * clear with atm_synth_get_cue(); compare with atm_synth_check_cue(). */
+	uint8_t cue;
 };
 
 #if ATM_HAS_FX_SLIDE

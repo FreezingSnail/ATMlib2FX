@@ -145,6 +145,13 @@ static void process_1p_cmd(const struct atm_cmd_data *cmd, struct atm_synth_stat
 			ch->dst_osc_params->mod = mod;
 			break;
 		}
+
+		case ATM_CMD_1P_SET_CUE:
+			/* CUE latches into the single shared cue byte (upstream
+			 * semantics: score and SFX share the last-cue byte), so a
+			 * cue emitted by an SFX is observable after it stops. */
+			atmlib_state.cue = cmd->params[0];
+			break;
 	}
 }
 

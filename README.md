@@ -54,6 +54,12 @@ digests and rendered AVR (absim) WAVs — not by taste or an automated UI run. N
 FX export exists (`--backend fx` → `BACKEND_UNAVAILABLE`); the music is candidate
 PROGMEM, and `score.bin` bytes are song-asset bytes, not whole-game cost.
 
+## Score command reference
+
+The public `ATM_CMD_M_*` macros, their bit-level encoding, and stream costs are
+documented in the [library reference](docs/library-reference.md#public-command-macros);
+the macros themselves live in [`src/atm_cmd_constants.h`](src/atm_cmd_constants.h).
+
 ## Attribution
 
 ATMlib2 builds on ATMlib and Squawk, with contributions from Davey Taylor,
