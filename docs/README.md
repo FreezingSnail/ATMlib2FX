@@ -13,3 +13,4 @@
 - [FX music integration](fx/integration.md): finite-v1 compact FX stream ownership, service placement, refill deadline and admission limits.
 - [FX research](../research/fx/README.md): storage investigation, measurements,
   architecture decisions, and experimental code.
+- [Compile-time mixer gating spike](../research/fx/fx-mixer-gating-results.md): per-channel/noise ISR mixer compile-out — recommended (go).

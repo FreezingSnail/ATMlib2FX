@@ -163,6 +163,7 @@ ISR(TIMER3_COMPA_vect, ISR_NAKED)
 "	ldi  r26 ,%[dcl]                                               " ASM_EOL
 "	ldi  r27 ,%[dch]                                               " ASM_EOL
 
+#if ATM_HAS_OSC_CH3 && ATM_HAS_NOISE
 "; OSC 3 noise generator                                           " ASM_EOL
 "	ldi  r18,                   1                                  " ASM_EOL
 "	lds  r0,                    osc_params_array+3*%[osz]+%[phi]   " ASM_EOL
@@ -186,7 +187,9 @@ ISR(TIMER3_COMPA_vect, ISR_NAKED)
 "1:                                                                " ASM_EOL
 "	add  r26,                   r0                                 " ASM_EOL
 "	adc  r27,                   r18                                " ASM_EOL
+#endif
 
+#if ATM_HAS_OSC_CH0
 "; OSC 0 advance phase accumulator                                 " ASM_EOL
 "	lds  r18,                   osc_params_array+0*%[osz]+%[phi]   " ASM_EOL
 "	lds  r0,                    osc_pha_acc_array+0*%[asz]         " ASM_EOL
@@ -208,7 +211,9 @@ ISR(TIMER3_COMPA_vect, ISR_NAKED)
 "1:                                                                " ASM_EOL
 "	add  r26,                   r1                                 " ASM_EOL
 "	adc  r27,                   r18                                " ASM_EOL
+#endif
 
+#if ATM_HAS_OSC_CH1
 "; OSC 1 advance phase accumulator                                 " ASM_EOL
 "	lds  r18,                   osc_params_array+1*%[osz]+%[phi]   " ASM_EOL
 "	lds  r0,                    osc_pha_acc_array+1*%[asz]         " ASM_EOL
@@ -230,7 +235,9 @@ ISR(TIMER3_COMPA_vect, ISR_NAKED)
 "1:                                                                " ASM_EOL
 "	add  r26,                   r1                                 " ASM_EOL
 "	adc  r27,                   r18                                " ASM_EOL
+#endif
 
+#if ATM_HAS_OSC_CH2
 "; OSC 2 advance phase accumulator                                 " ASM_EOL
 "	lds  r18,                   osc_params_array+2*%[osz]+%[phi]   " ASM_EOL
 "	lds  r0,                    osc_pha_acc_array+2*%[asz]         " ASM_EOL
@@ -252,6 +259,7 @@ ISR(TIMER3_COMPA_vect, ISR_NAKED)
 "1:                                                                " ASM_EOL
 "	add  r26,                   r1                                 " ASM_EOL
 "	adc  r27,                   r18                                " ASM_EOL
+#endif
 "	sts  %[regh],               r27                                " ASM_EOL
 "	sts  %[reg],                r26                                " ASM_EOL
 "; tick handler prescaler                                          " ASM_EOL
