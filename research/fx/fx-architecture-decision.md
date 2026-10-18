@@ -262,3 +262,119 @@ hashing retained files, and running the installed `avr-size --format=avr
 --mcu=atmega32u4` on original and FX production ELFs. Those reproduced
 8036/1361 and 7890/1382 B. No production source, external repository, or binary
 was changed. No external source was cloned, downloaded or copied.
+
+## hlh.6 review: compact stream selected for finite v1 music (2026-10-17)
+
+Decision bead: `ATMlib2FX-hlh.6`. The compact directly-consumed stream measured
+by `ATMlib2FX-hlh.5` is selected as the production direction **for finite
+(non-looping, no-SFX) music only**, with the pinned contract below. Every
+behavior marked *not yet demonstrated* is owned by a listed production bead; no
+such behavior may be advertised or shipped before that bead passes. This
+selection does not adopt any other measured prototype and does not change the
+legacy PROGMEM default build.
+
+Measured same-shell deltas versus the original PROGMEM interpreter
+(`fx-footprint-results.md` §12, `build/fx-port/compact/`): engine SRAM −10 B,
+engine flash +29 B (disclosed tradeoff; −140 B flash / −30 B SRAM versus the
+rejected 64-byte prototype), FX asset 1572 B vs 1903 B (−17.4 %), 512-tick
+trace MATCH with only the traversal-only columns `cN_ps`/`cN_delay` dropped,
+worst observed 7-tick service window 31 B inside a 32 B ring with zero underruns
+at 2000/7 Hz (absim, ~49 ring laps, FX address above `0x010000`), production
+stack free 1130 B. Record maxima on the fixture: complete record 24 B, due group
+17 B, 188 passes, 809 payload bytes; these are measurements, not limits.
+
+Source identity for this selection is the working-tree set committed with this
+decision: `src/atm_fx_compact.{h,c}` plus the guarded integration in
+`src/atm_synth.{h,c}` and `src/cmd_parse.c`. The hlh.5-era binary hash set is the
+HASH CORRECTION set recorded in `ATMlib2FX-hlh.5` (`compact 177dec70…`,
+`oldfx 9148a34a…`, `music d558e071…`, `noaudio 13b5dc0b…`,
+`compact_diag/t255 a95945ab…`, stream `0e8432ac…`, t255 `b7702512…`). Documents
+listed above still cite pre-reorganization paths; the live trees are under
+`research/fx/`.
+
+### Pinned contract (finite v1)
+
+1. **Framing.** Stream = version byte `0xC0` (skipped by the decoder), then
+   records until an `0x00` length byte (END). Record = `<len>` + `<gap>` +
+   `<bitmap>` + for each set channel in order 0–3 `<glen>` then `<glen>` command
+   bytes. All integers little-endian, one byte each. Gap varint: `<=0x7F` one
+   byte; `<=0x7EFF` two bytes (`0x80|hi7`, `lo8`); otherwise three bytes
+   (`0xFF`, `hi8`, `lo8`); maximum 65535. `bitmap` must be 1–15; `len >= 5`;
+   `glen >= 1`; command bytes keep the original ATMlib command encoding.
+   Traversal commands (`CALL`, repeats, `SET_LOOP_PATTERN`) must never appear in
+   finite-v1 streams; the converter resolves them offline. A `PATTERN_END` byte
+   surviving in a group stops that channel (shared `apply_cmd` semantics), never
+   loops.
+2. **Limits.** `len <= ring capacity`; default ring 32 B (`ATM_FX_COMPACT_RING`,
+   power of two, `<=256`). The host converter must enforce the same admission
+   limit and report the offending source event on rejection. Larger rings are a
+   build-time configuration, never a silent host behavior.
+3. **Refill and publication.** Single-producer (foreground service only) /
+   single-consumer (timer ISR only) ring. Producer fills directly with bounded
+   fetches, then publishes `tail` behind a compiler barrier; consumer preflights
+   the complete record (resident, length in range, structural walk, no mutation)
+   and pins `head` until the pass is applied, then advances `head`. 8-bit
+   indices are atomic on AVR; the timer never touches SPI. Refill deadline: at
+   least one complete record per frame (52 fps ≈ 19.23 ms); a stream is shippable
+   only if the host-validated worst service window fits the ring.
+4. **Addressing.** The caller supplies a data-section-relative 24-bit offset and
+   length; decoder offsets are `uint32_t` relative to the descriptor base; the
+   fetch callback receives relative offsets; the page is added exactly once; all
+   reads are bounds-checked against `stream_end`.
+5. **Underrun and errors.** A due pass without a resident record freezes the
+   tick before mutation, retains oscillator state and increments the underrun
+   counter. A malformed record (walk mismatch) or `len > ring` sets a sticky
+   error and stops playback. An END record or an all-inactive voice mask stops
+   cleanly, mirroring the original.
+6. **Start and stop.** `play` stops previous playback, re-initializes channels
+   and arms the descriptor; production must prefill the first record before the
+   first due tick (correction to the spike's register-then-fill order). `stop`
+   mutes owned voices and unregisters.
+7. **Pause and replacement** (semantics pinned; implementation owned by
+   `ATMlib2FX-hlh.9`): pause preserves position and live state with a defined
+   mute/restore; replacement is atomic and invalidates unread data; no partially
+   mixed track state is observable.
+8. **SFX** (owned by `ATMlib2FX-hlh.9`): independent tempo, music advances
+   behind the borrowed channel, stop/replacement restores the current music
+   voice. Storage choice (small PROGMEM SFX versus FX SFX) must be selected with
+   separate estimated/unmeasured/measured costs; no mandatory second queue.
+9. **Build/backend.** `ATM_HAS_FX_COMPACT=1` selects this backend (default 0);
+   shipping builds never link both the legacy traversal path and an FX decoder;
+   diagnostics (`ATM_FX_COMPACT_DIAG`) and SFX pay only when enabled; the legacy
+   PROGMEM path remains the default library build.
+10. **FX initialization and service ownership.** The caller owns
+    `FX::begin(page)` and the data-page lifecycle; the library only consumes the
+    fetch callback. Service runs in the main loop after display with sample
+    interrupts enabled, between complete SPI transactions.
+11. **Host admission** (owned by `ATMlib2FX-hlh.7`): validate formats, operands,
+    bounds, call-stack behavior and finite conversion work; reject anything
+    outside the input matrix with source-event diagnostics; emit deterministic
+    bytes plus metadata (ticks, passes, payload, max group/record, window table).
+
+### Explicitly not claimed
+
+Global loop synchronization, loop-target changes and same-tick extra effect
+passes remain **unresolved** — no concrete original trace exists yet and the
+spike converter rejects `SET_LOOP_PATTERN`; they are owned by
+`ATMlib2FX-hlh.8`, whose acceptance requires new original-engine loop traces,
+compact equivalence with no dropped behavioral columns, and an intro/loop demo.
+Pause/replacement/SFX behavior, the general converter input matrix, packing
+tooling, and game fit are owned by `ATMlib2FX-hlh.9` … `ATMlib2FX-hlh.11`. Game
+gates (flash ≤ 29696 B, static SRAM ≤ 2160 B, ≈150 B reserve with painted
+headroom) are **unmeasured**; the authoring adapter `ATMlib2FX-3ii.3` exports
+finite v1 only and must not advertise loops, effects or SFX.
+
+### Production beads created by this review
+
+| Bead | Scope | Depends on |
+|---|---|---|
+| `ATMlib2FX-hlh.7` | General converter for legacy tracker scores into the pinned format; admission diagnostics; deterministic metadata | hlh.6 |
+| `ATMlib2FX-hlh.8` | Runtime loop completion: all-stopped sync, loop targets, same-tick extra passes, intro/loop demo with original traces | hlh.6 |
+| `ATMlib2FX-hlh.9` | Pause/replacement/arming semantics + independent-tempo SFX overlay, storage choice with cost classes | hlh.6 |
+| `ATMlib2FX-hlh.10` | FX packing tooling, example sketches and integration documentation | hlh.7 |
+| `ATMlib2FX-hlh.11` | CreatureGathererFX integration and game-gate verification (cross-repo, owner-scoped) | hlh.8, hlh.9, hlh.10 |
+
+Residual disclosures: engine flash is +29 B versus the original interpreter;
+SPI transfer time for refills is assumed, not measured; all `build/fx-port/`
+evidence and the selected decoding sources were workspace-only and are preserved
+by the commit accompanying this decision.

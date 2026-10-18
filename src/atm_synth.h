@@ -9,6 +9,28 @@
 
 #define ATM_PATTERN_STACK_DEPTH (3)
 
+/* Compiled FX stream backend (ATMlib2FX-aoe prototype).
+ *
+ * When enabled, the device plays a single sequential, pre-expanded stream from
+ * a small refill buffer instead of traversing PROGMEM patterns. The runtime
+ * pattern/return stacks and the PROGMEM score/SFX entry points are removed for
+ * that build; see src/atm_fx_stream.c and docs/fx-footprint-results.md.
+ * Default off; normal library builds are unaffected. */
+#ifndef ATM_HAS_FX_STREAM
+#define ATM_HAS_FX_STREAM (0)
+#endif
+
+/* Compact directly-consumed FX music backend (ATMlib2FX-hlh.5 experimental
+ * candidate). Same ABI change as ATM_HAS_FX_STREAM (no runtime pattern/return
+ * stacks, no PROGMEM score/SFX paths). See src/atm_fx_compact.c.
+ * Default off; normal library builds are unaffected. */
+#ifndef ATM_HAS_FX_COMPACT
+#define ATM_HAS_FX_COMPACT (0)
+#endif
+
+/* Either compiled-stream backend removes the PROGMEM traversal ABI. */
+#define ATM_HAS_FX_STREAM_BACKEND (ATM_HAS_FX_STREAM || ATM_HAS_FX_COMPACT)
+
 /* Disable all FX to save space */
 #define ATM_HAS_FX_NONE (0)
 
@@ -131,11 +153,13 @@ struct atm_channel_state {
 	// Transposition FX
 	int8_t trans_config;
 
+#if !ATM_HAS_FX_STREAM_BACKEND
 	// Nesting
 	struct atm_pattern_state pstack[ATM_PATTERN_STACK_DEPTH];
 	uint8_t pstack_index;
 #if ATM_HAS_FX_LOOP
 	uint8_t loop_pattern_index;
+#endif
 #endif
 
 	struct osc_params *dst_osc_params;

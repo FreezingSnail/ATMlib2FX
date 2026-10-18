@@ -54,6 +54,7 @@ static void process_immediate_cmd(const uint8_t ch_index, const uint8_t cmd_id, 
 			break;
 
 		case ATM_CMD_I_PATTERN_END:
+#if !ATM_HAS_FX_STREAM_BACKEND
 			if (pattern_repetition_counter(ch) > 0) {
 				/* Repeat track */
 				pattern_repetition_counter(ch)--;
@@ -67,6 +68,11 @@ static void process_immediate_cmd(const uint8_t ch_index, const uint8_t cmd_id, 
 					ch->pstack_index--;
 				}
 			}
+#else
+			/* Compiled stream: PATTERN_END is only emitted for a real channel
+			 * stop. Calls, repeats and returns were resolved offline. */
+			goto stop_channel;
+#endif
 			break;
 
 		case ATM_CMD_I_GLISSANDO_OFF:
@@ -149,6 +155,7 @@ static void process_np_cmd(const struct atm_cmd_data *cmd, const uint8_t csz, st
 	/* Parametrised commands */
 	switch (cid) {
 		case ATM_CMD_NP_CALL:
+#if !ATM_HAS_FX_STREAM_BACKEND
 			/* ignore call command if the stack is full */
 			if (ch->pstack_index < ATM_PATTERN_STACK_DEPTH-1) {
 				const uint8_t new_track = cmd->params[0];
@@ -162,6 +169,7 @@ static void process_np_cmd(const struct atm_cmd_data *cmd, const uint8_t csz, st
 				}
 			}
 			/* if the stack is full and we cannot call, skip the call command */
+#endif
 			break;
 
 		case ATM_CMD_NP_GLISSANDO_ON:
@@ -181,7 +189,7 @@ static void process_np_cmd(const struct atm_cmd_data *cmd, const uint8_t csz, st
 			break;
 
 		case ATM_CMD_NP_SET_LOOP_PATTERN:
-#if ATM_HAS_FX_LOOP
+#if !ATM_HAS_FX_STREAM_BACKEND && ATM_HAS_FX_LOOP
 			ch->loop_pattern_index = cmd->params[0];
 #endif
 			break;
@@ -232,6 +240,39 @@ static void process_np_cmd(const struct atm_cmd_data *cmd, const uint8_t csz, st
 	}
 }
 
+#if ATM_HAS_FX_STREAM_BACKEND
+/* Apply one already-fetched command without touching a traversal pointer. Only
+ * the compiled-stream decoder needs this form; the PROGMEM path keeps its exact
+ * original process_cmd() below so ordinary library builds are unchanged. */
+static void apply_cmd(const uint8_t ch_index, const struct atm_cmd_data *cmd, struct atm_synth_state *score_state, struct atm_channel_state *ch)
+{
+	if (cmd->id < ATM_CMD_BLK_DELAY) {
+		/* 0 … 63 : NOTE ON/OFF */
+		ch->note = cmd->id;
+		trigger_note(cmd->id, ch);
+
+#if ATM_HAS_FX_NOTE_RETRIG
+		/* ARP retriggering */
+		if (ch->arpTiming & 0x20) {
+			ch->arpCount = 0;
+		}
+#endif
+	} else if (cmd->id < ATM_CMD_BLK_IMMEDIATE) {
+		/* delay */
+		ch->delay = cmd->id - 63;
+	} else if (cmd->id < ATM_CMD_BLK_1_PARAMETER) {
+		/* immediate */
+		process_immediate_cmd(ch_index, cmd->id, score_state, ch);
+	} else if (cmd->id < ATM_CMD_BLK_N_PARAMETER) {
+		/* 1 parameter byte command */
+		process_1p_cmd(cmd, score_state, ch);
+	} else {
+		const uint8_t csz = ((cmd->id >> 4) & 0x07) + 1;
+		/* n parameter byte command */
+		process_np_cmd(cmd, csz, score_state, ch);
+	}
+}
+#else
 static void process_cmd(const uint8_t ch_index, const struct atm_cmd_data *cmd, struct atm_synth_state *score_state, struct atm_channel_state *ch)
 {
 	const uint8_t **next_cmd_ptr = &pattern_cmd_ptr(ch);
@@ -272,4 +313,5 @@ void ext_synth_command(const uint8_t ch_index, const struct atm_cmd_data *cmd, s
 {
 	process_cmd(ch_index, cmd, score_state, ch);
 }
+#endif
 #endif

@@ -97,6 +97,7 @@ union fmt_hdr {
 	} f;
 };
 
+#if !ATM_HAS_FX_STREAM_BACKEND
 static const uint8_t *get_entry_pattern_array_ptr(const uint8_t *score)
 {
 	union fmt_hdr hdr;
@@ -117,6 +118,7 @@ static const uint8_t *get_track_start_ptr(struct atm_synth_state *score_state, c
 	}
 	return hdr.f.fmt & 0x01 ? s+1+pgm_read_byte(hdr.f.data) : s+1;
 }
+#endif
 
 void atm_synth_setup(void)
 {
@@ -129,6 +131,7 @@ void atm_synth_setup(void)
 	}
 }
 
+#if !ATM_HAS_FX_STREAM_BACKEND
 static void atm_synth_init_channel(struct atm_channel_state *ch, struct osc_params *dst, struct atm_synth_state *player, uint8_t pattern_index)
 {
 	memset(ch, 0, sizeof(*ch));
@@ -143,6 +146,7 @@ static void atm_synth_init_channel(struct atm_channel_state *ch, struct osc_para
 	ch->pstack[0].next_cmd_ptr = get_track_start_ptr(player, pattern_index);
 	ch->pstack[0].pattern_index = pattern_index;
 }
+#endif
 
 static void atm_player_init_state(const uint8_t *score, struct atm_synth_state *dst)
 {
@@ -151,6 +155,7 @@ static void atm_player_init_state(const uint8_t *score, struct atm_synth_state *
 	dst->tick_rate = 25;
 }
 
+#if !ATM_HAS_FX_STREAM_BACKEND
 void atm_synth_grab_channel(const uint8_t channel_index, struct osc_params *save)
 {
 	*save = osc_params_array[channel_index];
@@ -183,12 +188,14 @@ void atm_synth_stop_sfx_track(struct atm_sfx_state *sfx_state)
 	osc_set_tick_callback(1, NULL, NULL);
 	atm_synth_release_channel(sfx_state->ch_index);
 }
+#endif
 
 // stop playing
 void atm_synth_stop_score(void) {
 	osc_set_tick_callback(0, NULL, NULL);
 }
 
+#if !ATM_HAS_FX_STREAM_BACKEND
 void atm_synth_play_score(const uint8_t *score)
 {
 	/* stop current score if any */
@@ -224,12 +231,14 @@ void atm_synth_play_ext(const struct atm_synth_ext *synth_ext)
 	/* Start playback */
 	osc_set_tick_callback(0, atm_synth_ext_tick_handler, synth_ext);
 }
+#endif
 
 uint8_t atm_synth_is_score_stopped(void)
 {
 	return !(atmlib_state.channel_active_mute & 0xF0);
 }
 
+#if !ATM_HAS_FX_STREAM_BACKEND
 uint8_t atm_synth_get_score_paused(void)
 {
 	if (!(atmlib_state.channel_active_mute & 0xF0)) {
@@ -257,6 +266,7 @@ void atm_synth_set_score_paused(const uint8_t paused)
 	}
 	osc_set_tick_callback(0, paused ? NULL : atm_synth_score_tick_handler, NULL);
 }
+#endif
 
 /* include source file directly so the compiler can inline static functions therein */
 #include "cmd_parse.c"
@@ -336,6 +346,7 @@ static void process_fx(const uint8_t ch_index, struct atm_synth_state *score_sta
 #endif
 }
 
+#if !ATM_HAS_FX_STREAM_BACKEND
 static void process_channel(const uint8_t ch_index, struct atm_synth_state *score_state, struct atm_channel_state *ch)
 {
 	process_fx(ch_index, score_state, ch);
@@ -355,7 +366,9 @@ static void process_channel(const uint8_t ch_index, struct atm_synth_state *scor
 		ch->delay--;
 	}
 }
+#endif /* !ATM_HAS_FX_STREAM_BACKEND (process_channel) */
 
+#if !ATM_HAS_FX_STREAM_BACKEND
 static void atm_synth_ext_tick_handler(uint8_t cb_index, void *priv) {
 	(void)(cb_index);
 	struct atm_synth_ext *ext = (struct atm_synth_ext *)priv;
@@ -414,3 +427,21 @@ start_loop:
 		atm_synth_stop_score();
 	}
 }
+#endif /* !ATM_HAS_FX_STREAM_BACKEND */
+
+/* Compiled FX stream backend (ATMlib2FX-aoe): included like cmd_parse.c so it
+ * can reuse the static effect/command helpers above. */
+#if ATM_HAS_FX_STREAM
+#include "atm_fx_stream.h"
+#define ATM_FX_STREAM_IMPL
+#include "atm_fx_stream.c"
+#undef ATM_FX_STREAM_IMPL
+#endif
+
+/* Compact directly-consumed FX backend (ATMlib2FX-hlh.5 experimental). */
+#if ATM_HAS_FX_COMPACT
+#include "atm_fx_compact.h"
+#define ATM_FX_COMPACT_IMPL
+#include "atm_fx_compact.c"
+#undef ATM_FX_COMPACT_IMPL
+#endif
