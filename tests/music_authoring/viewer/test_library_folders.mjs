@@ -49,23 +49,23 @@ const folders = elements['lp-folder'];
 const stage = elements['lp-stage'];
 const previous = elements['lp-prev'];
 const next = elements['lp-next'];
-assert.equal(songs.children.length, 20);
+assert.equal(songs.children.length, 21);
 assert.deepEqual(folders.children.map(o => o.textContent), [
-  'All folders (20)', 'Creature Gatherer (11)', 'Authoring Examples (3)', 'Creature Frontiers (6)',
+  'All folders (21)', 'Creature Gatherer (11)', 'Authoring Examples (3)', 'Creature Frontiers (7)',
 ]);
 assert.equal(stage.children.length, 1);
 assert.equal(previous.disabled, true);
 
 folders.value = 'Creature Frontiers';
 folders.dispatch('change');
-assert.equal(songs.children.length, 6);
+assert.equal(songs.children.length, 7);
 assert.equal(songs.children[0].textContent, 'Pocket Nursery');
 assert.equal(songs.value, '14');
 assert.equal(paused, 1);
 assert.equal(stage.children.length, 1);
-assert.match(elements['lp-status'].textContent, /Showing 1 of 6 in Creature Frontiers/);
-for (let i = 0; i < 5; i++) next.dispatch('click');
-assert.equal(songs.value, '19');
+assert.match(elements['lp-status'].textContent, /Showing 1 of 7 in Creature Frontiers/);
+for (let i = 0; i < 6; i++) next.dispatch('click');
+assert.equal(songs.value, '20');
 assert.equal(next.disabled, true);
 const last = stage.children[0];
 next.dispatch('click');
@@ -77,7 +77,7 @@ folders.value = '';
 folders.dispatch('change');
 assert.equal(stage.children[0], last);
 assert.equal(paused, pausedBefore);
-assert.equal(songs.children.length, 20);
+assert.equal(songs.children.length, 21);
 
 folders.value = 'Authoring Examples';
 folders.dispatch('change');
@@ -108,4 +108,4 @@ assert.deepEqual(elements['lp-folder'].children.map(o => o.textContent), [
   'All folders (3)', 'Old category (1)', '<img src=x onerror=alert(1)> (1)', 'Other (1)',
 ]);
 assert.equal(elements['lp-folder'].children[2].children.length, 0);
-console.log('Library folders passed: all 20 tracks, counts, filtering, bounded navigation, keyboard, retained playback, teardown and legacy catalogs.');
+console.log('Library folders passed: all 21 tracks, counts, filtering, bounded navigation, keyboard, retained playback, teardown and legacy catalogs.');

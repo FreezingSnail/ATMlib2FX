@@ -21,7 +21,7 @@ status (`PLAYING` / `PAUSED` / `READY`).
 ## Why two sets
 
 The `arduboy-homemade:avr:arduboy-fx` image caps flash at **29,696 bytes**. The
-twenty catalog scores total **30,396 bytes** of PROGMEM asset data alone, before
+twenty-one catalog scores total **33,594 bytes** of PROGMEM asset data alone, before
 the engine, menu and Arduboy2 overhead (a measured shell + engine is about
 8,196 bytes). One image therefore cannot hold every song, so the sketch is built
 against one header at a time:
@@ -29,11 +29,11 @@ against one header at a time:
 | `JUKEBOX_SET` | Header                | Songs                                             | Score bytes |
 | ------------- | --------------------- | ------------------------------------------------- | ----------- |
 | `1` (default) | `songs_gatherer.h`    | Creature Gatherer + Authoring Examples (14 songs) | 16,296      |
-| `2`           | `songs_frontiers.h`   | Creature Frontiers (6 songs)                      | 14,100      |
+| `2`           | `songs_frontiers.h`   | Creature Frontiers (7 songs)                      | 17,298      |
 
-Together the two sets cover all **20** catalog songs. `songs_gatherer.h` and
+Together the two sets cover all **21** catalog songs. `songs_gatherer.h` and
 `songs_frontiers.h` are generated and committed beside the sketch; the model
-also supports an `all` set (20 songs, 30,396 bytes) for reporting only — it does
+also supports an `all` set (21 songs, 33,594 bytes) for reporting only — it does
 not fit.
 
 ## Regenerate the headers

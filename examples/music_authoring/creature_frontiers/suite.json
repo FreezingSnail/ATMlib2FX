@@ -164,5 +164,34 @@
       "A",
       "E"
     ]
+  },
+  {
+    "id": "snapdragon_sprint",
+    "name": "Snapdragon Sprint",
+    "role": "speedy dash / time-trial minigame",
+    "key": "E major",
+    "bpm": 187.5,
+    "meter": "4/4",
+    "bars": 16,
+    "seconds": 20.48,
+    "techniques": "Engine arpeggio cycles on the middle voice, staccato pulse lead, note-cut chatter accelerando into the loop, volume-slide swell with tremolo shimmer, root/octave bass and 8th-note noise backbeat.",
+    "chords": [
+      "E",
+      "E",
+      "A",
+      "A",
+      "C#m",
+      "C#m",
+      "B",
+      "B",
+      "A",
+      "A",
+      "E",
+      "E",
+      "B",
+      "B",
+      "E",
+      "E"
+    ]
   }
 ]

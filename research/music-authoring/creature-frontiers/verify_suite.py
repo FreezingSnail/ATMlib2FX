@@ -10,6 +10,8 @@ SUITE=ROOT/'examples/music_authoring/creature_frontiers'
 BUILD=ROOT/'build/creature-frontiers'
 sys.path.insert(0,str(ROOT/'tools'))
 from music_authoring import trace_verify  # noqa: E402
+from music_authoring import lower as lower_mod  # noqa: E402
+from music_authoring import validate as validate_mod  # noqa: E402
 def digest(p): return hashlib.sha256(p.read_bytes()).hexdigest()
 
 results=[]
@@ -30,7 +32,13 @@ for c in json.loads((SUITE/'suite.json').read_text()):
     assert r['loop']=={'start_tick':0,'end_tick':total}
     rows=list(csv.DictReader((BUILD/cue/'render/tick_trace.csv').open()))
     assert len(rows)==(2*total+1)*4
-    expected=trace_verify.expected_from_notes(r['notes'],total,tempo=100)
+    if r.get('effects') or r.get('commands'):
+        sc,diagnostics=validate_mod.load_and_validate(str(folder/'song.json'))
+        assert sc is not None and not diagnostics,(cue,[d.as_dict() for d in diagnostics])
+        expected=trace_verify.build_expected(sc,lower_mod.lower(sc))
+        assert trace_verify.expected_row_count(expected)==len(rows),(cue,'row_count')
+    else:
+        expected=trace_verify.expected_from_notes(r['notes'],total,tempo=100)
     mismatches=trace_verify.compare_rows(rows,expected,fields=('cvol','note','cmod','tempo'))
     assert not mismatches,(cue,mismatches[:10],len(mismatches))
     summary=dict(id=cue,source_sha256=r['source']['sha256'],event_digest=r['event_digest']['hex'],
@@ -42,7 +50,7 @@ for c in json.loads((SUITE/'suite.json').read_text()):
     print(json.dumps(summary))
 
 player=json.loads((BUILD/'main-player-report.json').read_text())
-assert player['song_count']==20
+assert player['song_count']==21
 by_id={s['id']:s for s in player['songs']}
 for delivered in results:
     embedded=by_id[delivered['id']]

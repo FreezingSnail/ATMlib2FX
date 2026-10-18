@@ -152,7 +152,7 @@ class RealCatalogFitsTests(unittest.TestCase):
     def test_frontiers_fits_and_all_does_not(self):
         frontiers_bytes, frontiers_fits = self.fits("frontiers")
         self.assertTrue(frontiers_fits)
-        self.assertEqual(frontiers_bytes, 14100)
+        self.assertEqual(frontiers_bytes, 17298)
 
         gatherer_bytes, gatherer_fits = self.fits("gatherer")
         self.assertTrue(gatherer_fits)
@@ -160,7 +160,7 @@ class RealCatalogFitsTests(unittest.TestCase):
 
         all_bytes, all_fits = self.fits("all")
         self.assertFalse(all_fits)
-        self.assertEqual(all_bytes, 30396)
+        self.assertEqual(all_bytes, 33594)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # Example song library
 
-Open [player.html](player.html) to browse all twenty demo songs offline. Use the Folder selector to filter Creature Gatherer, Creature Frontiers, or Authoring Examples. Every song loops in both its exported PROGMEM score and the web preview. The
+Open [player.html](player.html) to browse all twenty-one demo songs offline. Use the Folder selector to filter Creature Gatherer, Creature Frontiers, or Authoring Examples. Every song loops in both its exported PROGMEM score and the web preview. The
 **Loop** checkbox defaults on; turn it off to hear one cycle. Pause, Restart,
 seek and Raw/Piezo sound selection remain available.
 
@@ -37,7 +37,7 @@ of the next iteration; the browser uses a separate one-cycle playback buffer
 without changing the embedded capture.
 
 Validation compares two full original-engine cycles for every song, including
-gates, pitch, duty, tempo, delays and active/mute state. All twenty restart
+gates, pitch, duty, tempo, delays and active/mute state. All twenty-one restart
 without an added callback or channel drift. The finite basic-source goldens are
 preserved under `tests/music_authoring/fixtures/basic/`. Browser PCM/transport
 and piezo-routing checks run with Node. A live Chrome walkthrough could not run
