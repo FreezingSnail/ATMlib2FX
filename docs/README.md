@@ -1,6 +1,9 @@
 # Documentation
 
 - [Music authoring guide](music-authoring-guide.md): workflow for LLMs and people.
+- [Songwriting guide](songwriting-guide.md): chord, drum, tempo, loop, byte-cost
+  and volume recipes adapted from the T-arg ATMlib manual, rewritten for the
+  local `ATM_CMD_M_*` macros.
 - [ATMlib2FX music skill](skills/atm-music/SKILL.md): composition, revision,
   articulation, tempo, loops, and matching preview guidance for this port.
 - [Music authoring interface](music-authoring-interface.md): score and artifact contracts.
