@@ -8,9 +8,10 @@ the reference converter is
 [`research/fx/tools/fx_compact_spike/fx_compile_compact.c`](../../../research/fx/tools/fx_compact_spike/fx_compile_compact.c)
 (read-only).
 
-This lane exports **finite v1 only**: no runtime global loop, no live effects and
-no SFX. Everything the adapter cannot represent is rejected with a diagnostic
-that points at the offending source JSON Pointer.
+This lane exports **finite v1 only**: no runtime global loop, no live effects,
+no live commands and no SFX. Everything the adapter cannot represent is rejected
+with a diagnostic that points at the offending source JSON Pointer (pattern
+effects and commands are never silently dropped).
 
 | Fixture | Purpose | Tick rate | Stream |
 | --- | --- | ---: | ---: |
@@ -50,6 +51,9 @@ an engine or whole-game memory result.
 | A pass record larger than the 32-byte ring or the controlled service window | `DUE_GROUP_TOO_LARGE` | first source event in the widest group |
 | Channel group > 255 bytes | `LIMIT_EXCEEDED` | source event |
 | Any non-finite-v1 device op / traversal | `CAPABILITY_UNSUPPORTED` | source event |
+| A pattern `effects` window | `FX_EFFECT_UNSUPPORTED` | `/patterns/<name>/effects/<index>` |
+| A pattern `commands` entry | `FX_COMMAND_UNSUPPORTED` | `/patterns/<name>/commands/<index>` |
 
 `capabilities --json` advertises the FX backend for `build` with
-`loops`/`effects`/`sfx` explicitly `false`.
+`loops`/`effects`/`commands`/`sfx` explicitly `false`. Effect and live-command
+families are rejected, never silently dropped (ATMlib2FX-3ii.14.4).

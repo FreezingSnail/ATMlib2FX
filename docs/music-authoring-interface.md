@@ -284,6 +284,35 @@ stable codes, each with a JSON Pointer and suggestion:
 `COMMAND_ORDER`, `COMMAND_DUPLICATE`. An invalid window or command removes the
 whole pattern from admission, exactly like an invalid note event.
 
+The effect family must also match at the **track** level: when a pattern is
+placed on a physical channel, each of its windows must match that channel's
+voice. This is only observable for effect-only patterns (no events to fix a
+voice); such a mismatch is `EFFECT_CHANNEL_MISMATCH` pointed at the tracking
+`pattern` reference.
+
+### Host event ordering
+
+Lowering (`tools/music_authoring/lower.py`) expands every pattern instance and
+emits typed device ops with an absolute song tick, a physical channel, a JSON
+Pointer source and a typed operand payload. Within one channel, ops that share a
+tick are emitted in this fixed order (earliest first):
+
+1. the initial clock `set_tempo` (tick 0, channel 0 only),
+2. effect `*_off` (the exclusive-window close),
+3. effect `*_on`,
+4. note gate `mute`,
+5. instrument `set_volume`,
+6. instrument `set_mod`,
+7. note `note`,
+8. live commands (`set_tempo`, `add_tempo`, `set_transposition`,
+   `add_transposition`, `set_volume`, `set_mod`, `cue`).
+
+So a same-tick command overrides the note attack's instrument volume/duty, a
+same-tick gate mute precedes the next note's attack (adjacent gates), and an
+effect OFF precedes the effect ON that follows it. An effect-free score keeps
+its original per-channel append order, so its canonical event digest is
+unchanged.
+
 ## Compiler boundary
 
 Lower the score into ordered host events with absolute song tick, physical
@@ -575,14 +604,26 @@ the adapter is [`tools/music_authoring/fx_backend.py`](../tools/music_authoring/
   max group/record and the worst 1..8-tick decode window). Re-running yields
   byte-identical output.
 - Admission enforces the pinned limits (record `<= ring`, default 32 B; no
-  traversal/`SET_LOOP_PATTERN`; no effects or SFX) and the controlled foreground
-  service window. Failures are `DUE_GROUP_TOO_LARGE` / `LIMIT_EXCEEDED` /
-  `CAPABILITY_UNSUPPORTED` diagnostics that point at the offending source JSON
-  Pointer.
+  traversal/`SET_LOOP_PATTERN`; no effects, no live commands and no SFX) and the
+  controlled foreground service window. Failures are `DUE_GROUP_TOO_LARGE` /
+  `LIMIT_EXCEEDED` / `CAPABILITY_UNSUPPORTED` diagnostics that point at the
+  offending source JSON Pointer.
+- **Pattern effects and live commands are rejected, never silently dropped**
+  (`ATMlib2FX-3ii.14.4`). The pinned contract advertises no live effects or
+  instantaneous commands, and the framing's `<gap>` field records effect-only
+  *idle* ticks between passes — not a license to reshape or reschedule an
+  authored effect. A pattern that declares `effects` fails with
+  `FX_EFFECT_UNSUPPORTED` at `/patterns/<name>/effects/<index>`; a pattern that
+  declares `commands` fails with `FX_COMMAND_UNSUPPORTED` at
+  `/patterns/<name>/commands/<index>`. Both diagnostics name the effect/command
+  kind and carry a suggested correction. No family is admitted in this revision:
+  none is exactly representable within the pinned ring/service-window rules
+  without changing the AVR decoder or the pinned framing. `capabilities`
+  advertises `effects: false` and `commands: false` and never claims otherwise.
 - A runtime global loop is **not representable** by the finite stream. A source
   with `"loop": true` is exported as its finite arrangement exactly once and
   reported with a source-pointed `LOOP_NOT_EXPORTED` warning; `capabilities`
-  never advertises loops, effects or SFX for this backend.
+  never advertises loops, effects, commands or SFX for this backend.
 - `validate` and `render` stay on `progmem`; `--backend fx` there exits `2` with
   `BACKEND_UNAVAILABLE`. The PROGMEM default build is unchanged.
 

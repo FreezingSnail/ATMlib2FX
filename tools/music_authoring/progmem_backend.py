@@ -355,14 +355,21 @@ def capability_summary() -> dict:
     backends = dict(available["backend"])
     # The finite-v1 FX adapter is now supported for `build --backend fx`
     # (stream framing selected by ATMlib2FX-hlh.6).  Advertise only finite v1:
-    # loops, live effects and SFX are explicitly not offered.
+    # loops, live effects, live commands and SFX are explicitly not offered.
+    # The adapter rejects pattern `effects`/`commands` with FX_EFFECT_UNSUPPORTED
+    # / FX_COMMAND_UNSUPPORTED rather than silently dropping them.
     backends["fx"] = {
         "available": True,
         "command": "build",
         "format": "atm_fx_compact_v1",
         "ring_capacity": 32,
         "finite_v1": True,
-        "advertises": {"loops": False, "effects": False, "sfx": False},
+        "advertises": {
+            "loops": False,
+            "effects": False,
+            "commands": False,
+            "sfx": False,
+        },
     }
     features = [
         "notes",

@@ -66,6 +66,34 @@ class LoopTests(unittest.TestCase):
                             self.assertEqual({k:a[k] for k in keys}, {k:b[k] for k in keys})
                 self.assertTrue(all(r['tempo'] == '100' for r in rows))
 
+    def test_effect_windows_repeat_and_align_across_loop_cycles(self):
+        doc = {
+            'format': 'atmlib-score', 'version': 1, 'id': 'loop_fx', 'loop': True,
+            'clock': {'tick_rate': 100, 'ticks_per_beat': 25, 'beats_per_bar': 4},
+            'instruments': {'p': {'voice': 'pulse', 'volume': 70, 'duty': 128}},
+            'patterns': {
+                'run': {
+                    'ticks': 8,
+                    'events': [{'at': 0, 'note': 'C4', 'duration': 4, 'instrument': 'p'}],
+                    'effects': [
+                        {'at': 0, 'type': 'lfo', 'mode': 'tremolo', 'depth': 5, 'period': 2, 'until': 4}
+                    ],
+                }
+            },
+            'tracks': {'pulse0': [{'pattern': 'run', 'repeat': 3}]},
+        }
+        score, diagnostics = validate_document(
+            doc, source_path='<loop-fx>', raw_bytes=json.dumps(doc).encode()
+        )
+        self.assertEqual(diagnostics, [])
+        lowered = lower(score)
+        self.assertEqual([(e.start_tick, e.end_tick) for e in lowered.effect_spans], [(0, 4), (8, 12), (16, 20)])
+        self.assertEqual(len(lowered.pattern_instances), 3)
+        self.assertEqual(
+            [op.tick for op in lowered.ops_for_channel('pulse0') if op.op == 'lfo_on'],
+            [0, 8, 16],
+        )
+
     def test_every_catalog_song_is_a_complete_loop_with_varied_real_pacing(self):
         catalog = json.loads((ROOT / 'examples/music_authoring/catalog.json').read_text())
         bpms = set()

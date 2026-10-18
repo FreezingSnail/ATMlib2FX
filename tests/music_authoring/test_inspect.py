@@ -53,6 +53,7 @@ from music_authoring.validate import validate_document  # noqa: E402
 
 EXAMPLE_REL = "tests/music_authoring/fixtures/basic/song.json"
 ISOLATED_REL = "tests/music_authoring/fixtures/basic/isolated.json"
+EFFECT_REL = "tests/music_authoring/fixtures/effects/effect_probe.json"
 REVIEW_REL = "tests/music_authoring/fixtures/basic/expected/review.json"
 OUT_ROOT = os.path.join(REPO_ROOT, "build", "music-authoring", "inspect-tests")
 REAL_PREVIEW = os.path.join(REPO_ROOT, "build", "music-authoring", "preview-det-a")
@@ -609,6 +610,43 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(code, 3)
         self.assertEqual(payload["diagnostics"][0]["code"], "AUDIO_PREVIEW_INVALID")
+
+
+class EffectTimelineTests(unittest.TestCase):
+    """inspect surfaces the expanded effect spans on the shared timeline."""
+
+    def test_report_and_payload_carry_effect_spans_and_commands(self):
+        out = os.path.join(OUT_ROOT, "effects", "review.html")
+        code, payload = run_cli(
+            ["inspect", os.path.join(REPO_ROOT, EFFECT_REL), "--out", out, "--json"]
+        )
+        self.assertEqual(code, 0, payload)
+        report = payload["report"]
+        # Two repeats of a pattern with an arpeggio window and a live command.
+        self.assertEqual(report["expanded_effect_events"], 2)
+        self.assertEqual(report["expanded_command_events"], 2)
+        self.assertEqual(report["effects"][0]["source"], "/patterns/run/effects/0")
+        self.assertEqual(report["effects"][0]["kind"], "arpeggio")
+        self.assertEqual(report["commands"][0]["source"], "/patterns/run/commands/0")
+
+        # The adjacent canonical review payload (the shared timeline) carries the
+        # same spans with absolute ticks.
+        with open(payload["artifacts"]["review_json"], "r", encoding="utf-8") as handle:
+            review = json.load(handle)
+        self.assertEqual(
+            [(e["start_tick"], e["end_tick"], e["repeat_index"]) for e in review["effects"]],
+            [(0, 8, 0), (16, 24, 1)],
+        )
+        self.assertEqual([c["start_tick"] for c in review["commands"]], [2, 18])
+
+    def test_effect_free_report_has_no_effect_keys(self):
+        out = os.path.join(OUT_ROOT, "effects-free", "review.html")
+        code, payload = run_cli(
+            ["inspect", os.path.join(REPO_ROOT, EXAMPLE_REL), "--out", out, "--json"]
+        )
+        self.assertEqual(code, 0, payload)
+        self.assertNotIn("effects", payload["report"])
+        self.assertNotIn("commands", payload["report"])
 
 
 class CapabilityReportTests(unittest.TestCase):

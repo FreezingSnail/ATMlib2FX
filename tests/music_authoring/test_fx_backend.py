@@ -413,11 +413,20 @@ class PackingMetadataTests(unittest.TestCase):
         self.assertEqual(summary["backends"]["fx"]["format"], "atm_fx_compact_v1")
         self.assertEqual(
             summary["backends"]["fx"]["advertises"],
-            {"loops": False, "effects": False, "sfx": False},
+            {"loops": False, "effects": False, "commands": False, "sfx": False},
         )
         self.assertIn("fx_stream_export", summary["features"])
-        for banned in ("fx_loops", "fx_effects", "fx_sfx"):
+        for banned in ("fx_loops", "fx_effects", "fx_commands", "fx_sfx"):
             self.assertNotIn(banned, summary["features"])
+
+    def test_report_capabilities_match_policy(self):
+        # The per-build report advertises the same finite-v1 policy as
+        # `capabilities`: effects and commands are not offered.
+        capabilities = self.result.report["capabilities"]
+        self.assertFalse(capabilities["effects"])
+        self.assertFalse(capabilities["commands"])
+        self.assertFalse(capabilities["loops"])
+        self.assertFalse(capabilities["sfx"])
 
 
 class GapVarintRecordLenTests(unittest.TestCase):
@@ -627,6 +636,177 @@ class AdmissionTests(unittest.TestCase):
             diagnostics = fx.diagnostics_for(exc)
         self.assertEqual(len(diagnostics), 1)
         self.assertEqual(diagnostics[0].code, "CAPABILITY_UNSUPPORTED")
+
+
+class EffectCommandAdmissionTests(unittest.TestCase):
+    """Finite-v1 rejects pattern ``effects``/``commands`` (ATMlib2FX-3ii.14.4).
+
+    The pinned contract advertises no live effects or instantaneous commands,
+    and lowering currently ignores both surfaces, so an unguarded export used to
+    drop them silently. Every family now fails with a stable, source-pointed
+    diagnostic instead.
+    """
+
+    EFFECT_CASES = (
+        (
+            "arpeggio",
+            "pulse",
+            {
+                "at": 0,
+                "type": "arpeggio",
+                "offsets": [4, 7],
+                "period": 3,
+                "until": 16,
+            },
+        ),
+        ("note_cut", "pulse", {"at": 0, "type": "note_cut", "period": 2}),
+        (
+            "lfo",
+            "pulse",
+            {
+                "at": 0,
+                "type": "lfo",
+                "mode": "tremolo",
+                "depth": 20,
+                "period": 10,
+            },
+        ),
+        (
+            "slide",
+            "pulse",
+            {
+                "at": 0,
+                "type": "slide",
+                "param": "volume",
+                "amount": 3,
+                "every": 4,
+            },
+        ),
+        (
+            "glissando",
+            "pulse",
+            {"at": 0, "type": "glissando", "period": 4, "direction": "up"},
+        ),
+        (
+            "noise_retrig",
+            "noise",
+            {"at": 0, "type": "noise_retrig", "period": 2, "note": "C3"},
+        ),
+    )
+
+    def _document(self, *, effects=None, commands=None, voice="pulse"):
+        instrument = {"voice": voice, "volume": 80}
+        if voice == "pulse":
+            instrument["duty"] = 127
+        pattern = {
+            "ticks": 16,
+            "events": [{"at": 0, "note": "C4", "duration": 16, "instrument": "voice"}],
+        }
+        if effects is not None:
+            pattern["effects"] = effects
+        if commands is not None:
+            pattern["commands"] = commands
+        track = "noise" if voice == "noise" else "pulse0"
+        return {
+            "format": "atmlib-score",
+            "version": 1,
+            "id": "fx_effect_probe",
+            "clock": {"tick_rate": 60, "ticks_per_beat": 25, "beats_per_bar": 4},
+            "instruments": {"voice": instrument},
+            "patterns": {"p": pattern},
+            "tracks": {track: [{"pattern": "p", "repeat": 1}]},
+        }
+
+    def _run_cli(self, argv):
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = cli_main(argv)
+        return code, buffer.getvalue()
+
+    def test_every_effect_family_rejected_with_pointer(self):
+        for kind, voice, effect in self.EFFECT_CASES:
+            with self.subTest(kind=kind):
+                score = make_score(
+                    self._document(effects=[effect], voice=voice),
+                    rel="<fx-effect-probe>",
+                )
+                with self.assertRaises(fx.FxAdmissionError) as ctx:
+                    fx.serialize_compact(score, lower(score))
+                diagnostic = ctx.exception.diagnostic
+                self.assertEqual(diagnostic.code, "FX_EFFECT_UNSUPPORTED")
+                self.assertEqual(diagnostic.path, "/patterns/p/effects/0")
+                self.assertIn(kind, diagnostic.message)
+                self.assertEqual(
+                    fx.diagnostics_for(ctx.exception)[0].path,
+                    "/patterns/p/effects/0",
+                )
+
+    def test_every_live_command_rejected_with_pointer(self):
+        for command in (
+            {"at": 4, "type": "set_transposition", "value": -12},
+            {"at": 0, "type": "cue", "value": 1},
+            {"at": 8, "type": "set_tempo", "value": 100},
+        ):
+            with self.subTest(command=command["type"]):
+                score = make_score(
+                    self._document(commands=[command]),
+                    rel="<fx-command-probe>",
+                )
+                with self.assertRaises(fx.FxAdmissionError) as ctx:
+                    fx.serialize_compact(score, lower(score))
+                diagnostic = ctx.exception.diagnostic
+                self.assertEqual(diagnostic.code, "FX_COMMAND_UNSUPPORTED")
+                self.assertEqual(diagnostic.path, "/patterns/p/commands/0")
+                self.assertIn(command["type"], diagnostic.message)
+
+    def test_effects_are_never_silently_dropped(self):
+        # Regression: lowering ignores pattern effects, so pre-14.4 the stream
+        # was byte-identical to the effect-free score. It must now raise.
+        arpeggio = self.EFFECT_CASES[0][2]
+        score = make_score(
+            self._document(effects=[arpeggio]), rel="<fx-effect-probe>"
+        )
+        lower(score)  # lowering still ignores the surface...
+        with self.assertRaises(fx.FxAdmissionError) as ctx:
+            fx.serialize_compact(score, lower(score))
+        self.assertEqual(ctx.exception.diagnostic.code, "FX_EFFECT_UNSUPPORTED")
+
+    def test_effect_free_export_is_unchanged(self):
+        score = load(BASIC_REL)
+        result = fx.serialize(score, lower(score), "expected")
+        with open(os.path.join(EXPECTED_DIR, "stream.bin"), "rb") as handle:
+            self.assertEqual(result.stream_bytes, handle.read())
+
+    def test_build_effect_probe_cli_exits_two_without_assets(self):
+        out = os.path.join(LANE, "effect-probe")
+        os.makedirs(out, exist_ok=True)
+        song = os.path.join(out, "song.json")
+        with open(song, "w", encoding="utf-8") as handle:
+            json.dump(self._document(effects=[self.EFFECT_CASES[0][2]]), handle)
+        code, payload = self._run_cli(
+            [
+                "build",
+                song,
+                "--backend",
+                "fx",
+                "--out",
+                os.path.join(out, "assets"),
+                "--json",
+            ]
+        )
+        self.assertEqual(code, 2)
+        body = json.loads(payload)
+        self.assertFalse(body["ok"])
+        diagnostic = body["diagnostics"][0]
+        self.assertEqual(diagnostic["code"], "FX_EFFECT_UNSUPPORTED")
+        self.assertEqual(diagnostic["path"], "/patterns/p/effects/0")
+        self.assertFalse(
+            os.path.exists(os.path.join(out, "assets", "stream.bin")),
+            "an effect-bearing source must not produce assets",
+        )
 
 
 class CliTests(unittest.TestCase):

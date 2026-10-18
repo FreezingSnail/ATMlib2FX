@@ -545,6 +545,15 @@ def inspect(
         "side_effects": SIDE_EFFECT_NOTE,
         "engine": review_payload["engine"],
     }
+    # The expanded effect spans and live commands travel inside the canonical
+    # review payload (the shared timeline) and their counts are surfaced here
+    # only when the score carries them, so effect-free reports are unchanged.
+    if lowered.effect_spans:
+        report["expanded_effect_events"] = len(lowered.effect_spans)
+        report["effects"] = [span.as_dict() for span in lowered.effect_spans]
+    if lowered.command_events:
+        report["expanded_command_events"] = len(lowered.command_events)
+        report["commands"] = [event.as_dict() for event in lowered.command_events]
 
     return (
         {

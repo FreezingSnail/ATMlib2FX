@@ -161,7 +161,7 @@ class CapabilityTests(unittest.TestCase):
         self.assertEqual(summary["backends"]["fx"]["command"], "build")
         self.assertEqual(
             summary["backends"]["fx"]["advertises"],
-            {"loops": False, "effects": False, "sfx": False},
+            {"loops": False, "effects": False, "commands": False, "sfx": False},
         )
         self.assertIn("finite_v1_fx", summary["features"])
         self.assertNotIn("fx_loops", summary["features"])

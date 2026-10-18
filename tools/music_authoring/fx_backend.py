@@ -17,10 +17,27 @@ Pinned framing (little-endian, one byte per integer)::
     0x00        END (a single length byte)
 
 Admission follows the selected contract: ``len <= ring`` (default 32 B), no
-traversal commands (``CALL``/repeats/``SET_LOOP_PATTERN``), no effects and no
-SFX in finite v1.  Everything the adapter cannot represent is rejected with a
-diagnostic that points at the offending source JSON Pointer (or the instrument
-preset), never silently dropped.
+traversal commands (``CALL``/repeats/``SET_LOOP_PATTERN``), no effects, no live
+commands and no SFX in finite v1.  Everything the adapter cannot represent is
+rejected with a diagnostic that points at the offending source JSON Pointer (or
+the instrument preset), never silently dropped.
+
+Effect and live-command admission is explicit and per family (finite-v1 compact
+adapter policy, ``ATMlib2FX-3ii.14.4``):
+
+* The pinned contract (``ATMlib2FX-hlh.6``) advertises no live effects and no
+  instantaneous commands.  The framing's ``<gap>`` field records *effect-only
+  idle ticks between passes*, which is not a license to reshape, reschedule or
+  silently drop an authored effect.
+* A pattern that declares ``effects`` is rejected with ``FX_EFFECT_UNSUPPORTED``
+  pointing at ``/patterns/<name>/effects/<index>``; a pattern that declares
+  ``commands`` is rejected with ``FX_COMMAND_UNSUPPORTED`` pointing at
+  ``/patterns/<name>/commands/<index>``.  Both are hard admission errors, one
+  stable code per family.
+* No family is admitted in this revision.  None is exactly representable
+  within the pinned ring / service-window rules without changing the AVR
+  decoder or the pinned framing (both out of scope here), so the adapter does
+  not guess.
 
 A runtime global loop is not representable by the finite stream (the decoder
 stops at END or when every voice stops).  The adapter therefore exports the
@@ -87,8 +104,15 @@ ATM_CMD_1P_SET_TEMPO = 0x72
 ATM_CMD_1P_SET_VOLUME = 0x74
 ATM_CMD_1P_SET_MOD = 0x76
 
-# Finite v1 advertises no live effects / SFX / traversal.
+# Finite v1 advertises no live effects / commands / SFX / traversal.
 _TRAVERSAL_OPS = frozenset({"call", "call_repeat", "loop", "pattern_end", "return"})
+
+# Stable per-family admission codes for the additive v1 pattern surface.
+# The pinned contract advertises no effects or live commands; a score that
+# authors either family is rejected (never silently dropped) with one of these
+# codes and the offending source JSON Pointer.
+FX_EFFECT_UNSUPPORTED = "FX_EFFECT_UNSUPPORTED"
+FX_COMMAND_UNSUPPORTED = "FX_COMMAND_UNSUPPORTED"
 
 
 class FxAdmissionError(ScoreError):
@@ -393,8 +417,58 @@ def _widest_source(passes: list[_Pass]) -> str:
     return offender[2]
 
 
+def reject_effect_families(score: Score) -> None:
+    """Reject pattern ``effects`` / ``commands`` before any byte is emitted.
+
+    The finite-v1 compact stream advertises neither live effects nor
+    instantaneous commands, and the framing's effect-only gap ticks are idle
+    ticks, not a license to reshape an authored effect.  Every family is
+    rejected with a stable, source-pointed diagnostic (one code per family), so
+    an effect- or command-bearing score fails loudly instead of silently
+    exporting as if the surface were absent.
+
+    Raises:
+        FxAdmissionError: ``FX_EFFECT_UNSUPPORTED`` at
+            ``/patterns/<name>/effects/<index>`` or ``FX_COMMAND_UNSUPPORTED``
+            at ``/patterns/<name>/commands/<index>``.
+    """
+    for name, pattern in score.patterns.items():
+        if pattern.effects:
+            window = pattern.effects[0]
+            raise FxAdmissionError(
+                FX_EFFECT_UNSUPPORTED,
+                pointer("patterns", name, "effects", window.index),
+                (
+                    f"pattern {name!r} declares a {window.kind!r} effect window; "
+                    "finite v1 cannot represent live effects."
+                ),
+                (
+                    "Remove the effect window. Finite v1 encodes notes, rests, "
+                    "pulse duty, fixed instrument volume and the clock only; "
+                    "author the sound with note events or build with the PROGMEM "
+                    "backend."
+                ),
+            )
+        if pattern.commands:
+            command = pattern.commands[0]
+            raise FxAdmissionError(
+                FX_COMMAND_UNSUPPORTED,
+                pointer("patterns", name, "commands", command.index),
+                (
+                    f"pattern {name!r} declares a {command.kind!r} live command; "
+                    "finite v1 cannot represent instantaneous commands."
+                ),
+                (
+                    "Remove the live command. Finite v1 carries the score clock "
+                    "only; express the change with note or instrument events or "
+                    "build with the PROGMEM backend."
+                ),
+            )
+
+
 def serialize_compact(score: Score, lowered: Lowered) -> tuple[bytes, dict, list[Diagnostic]]:
     """Build the pinned byte stream plus packing metadata."""
+    reject_effect_families(score)
     passes = _collect_passes(score, lowered)
     diagnostics, metrics = _admission(score, lowered, passes, lowered.total_ticks)
 
@@ -503,6 +577,7 @@ def build_report(
             "finite_v1": True,
             "loops": False,
             "effects": False,
+            "commands": False,
             "sfx": False,
             "deterministic_bytes": True,
             "packing_metadata": True,

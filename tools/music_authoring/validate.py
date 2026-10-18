@@ -1440,6 +1440,32 @@ def _validate_tracks(
                 channel_ok = False
                 continue
 
+            # Reach the same conclusion for effect-only patterns: a pattern's
+            # effect family must match the voice of every channel that plays
+            # it. A pulse effect on the noise channel (or a noise_retrig on a
+            # pulse channel) never sounds, so it is a diagnostic, not silence.
+            effect_voice_ok = True
+            for effect in pattern.effects:
+                required = "noise" if effect.kind in NOISE_EFFECT_TYPES else "pulse"
+                if required != expected_voice:
+                    sink.error(
+                        "EFFECT_CHANNEL_MISMATCH",
+                        pointer(use_path, "pattern"),
+                        f"Pattern {pattern_name!r} declares {effect.kind} "
+                        f"({required}-channel) effects on {channel}, a "
+                        f"{expected_voice} channel.",
+                        (
+                            "Play this pattern only on channels whose voice "
+                            "matches its effects, or move the effects to a "
+                            "matching pattern."
+                        ),
+                    )
+                    effect_voice_ok = False
+                    break
+            if not effect_voice_ok:
+                channel_ok = False
+                continue
+
             channel_ticks += pattern.ticks * repeat
             total_tick_guard = max(total_tick_guard, channel_ticks)
             if channel_ticks > HOST_LIMITS["total_ticks"]:
