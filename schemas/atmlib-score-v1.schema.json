@@ -101,6 +101,10 @@
         "pulse2": {"$ref": "#/$defs/track"},
         "noise": {"$ref": "#/$defs/track"}
       }
+    },
+    "loop": {
+      "type": "boolean",
+      "description": "Optional whole-song loop flag. Omit or set false for finite playback; true repeats the entire arrangement through the original PROGMEM engine's SET_LOOP_PATTERN command. Loop lowering and semantic checks stay with the CLI."
     }
   },
   "$defs": {
