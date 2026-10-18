@@ -132,7 +132,11 @@ def cmd_build(args: argparse.Namespace) -> int:
         if args.backend == "fx":
             from . import fx_backend
 
-            result, artifacts = fx_backend.build(score, lowered, args.out)
+            ring = getattr(args, "ring", None)
+            if ring is None:
+                result, artifacts = fx_backend.build(score, lowered, args.out)
+            else:
+                result, artifacts = fx_backend.build(score, lowered, args.out, ring=ring)
             warnings = list(result.diagnostics)
         else:
             result, artifacts = build_backend(score, lowered, args.out)
@@ -221,6 +225,15 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("song")
     build.add_argument("--backend", default="progmem")
     build.add_argument("--out", required=True)
+    build.add_argument(
+        "--ring",
+        type=int,
+        default=None,
+        help=(
+            "FX admission ring in bytes (power of two, 5..256; default 32). "
+            "Ignored by the progmem backend."
+        ),
+    )
     build.add_argument("--json", action="store_true", help="emit JSON (always on)")
     build.set_defaults(func=cmd_build)
 

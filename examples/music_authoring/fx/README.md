@@ -1,26 +1,28 @@
-# Finite-v1 compact FX fixtures (ATMlib2FX-3ii.3)
+# Compact FX fixtures (ATMlib2FX-3ii.3 / ATMlib2FX-hlh.12)
 
-Authored, **finite** (non-looping) v1 scores exported through the selected
-compact FX backend. The stream framing, limits and semantics are pinned by the
-`hlh.6 review` section of
-[`research/fx/fx-architecture-decision.md`](../../../research/fx/fx-architecture-decision.md);
-the reference converter is
-[`research/fx/tools/fx_compact_spike/fx_compile_compact.c`](../../../research/fx/tools/fx_compact_spike/fx_compile_compact.c)
-(read-only).
+Authored v1 scores exported through the selected compact FX backend. The stream
+framing, limits and semantics are pinned by the `hlh.6 review` section of
+[`research/fx/fx-architecture-decision.md`](../../../research/fx/fx-architecture-decision.md)
+and its global-loop extension (`hlh.8`); the reference converter is
+[`tools/fx_pack/fx_encode.c`](../../../tools/fx_pack/fx_encode.c).
 
-This lane exports **finite v1 only**: no runtime global loop, no live effects,
-no live commands and no SFX. Everything the adapter cannot represent is rejected
-with a diagnostic that points at the offending source JSON Pointer (pattern
-effects and commands are never silently dropped).
+The adapter exports **finite effect/command scores** (the same command bytecode
+the compact decoder parses, via `progmem_backend.encode_op`) and **resident
+global loops** with the pinned `0xC1` framing when the whole loop region fits the
+admission ring. A loop region larger than the ring (a streaming wrap, which the
+pinned contract rejects) falls back to the finite `0xC0` arrangement once with a
+`LOOP_NOT_EXPORTED` warning — never silently. SFX is not offered.
 
 | Fixture | Purpose | Tick rate | Stream |
 | --- | --- | ---: | ---: |
 | [`basic/song.json`](basic/song.json) | four-channel equivalence baseline | 50 Hz | 269 B |
 | [`stress/song.json`](stress/song.json) | sparse song at the 2000/7 Hz stress rate (documented 6-tick frame window) | 255 Hz | 101 B |
+| [`loop/song.json`](loop/song.json) | smallest resident loop: 2-tick cycle, `0xC1` framing, 22-byte loop region | 50 Hz | 50 B |
 
 `basic/expected/` holds the byte-golden `stream.bin`, generated `stream.h`,
 review payload and `checksums.txt`; the stream SHA-256 is also in every build's
-`report.json` under `stream.sha256`.
+`report.json` under `stream.sha256`. `loop/expected/stream.bin` is the pinned
+`0xC1` loop golden (hand-verified byte-for-byte against the device decoder).
 
 ## Build and verify
 
@@ -47,13 +49,19 @@ an engine or whole-game memory result.
 
 | Condition | Code | Points at |
 | --- | --- | --- |
-| Global `"loop": true` | `LOOP_NOT_EXPORTED` (warning; finite arrangement exported once) | `/loop` |
-| A pass record larger than the 32-byte ring or the controlled service window | `DUE_GROUP_TOO_LARGE` | first source event in the widest group |
-| Channel group > 255 bytes | `LIMIT_EXCEEDED` | source event |
-| Any non-finite-v1 device op / traversal | `CAPABILITY_UNSUPPORTED` | source event |
-| A pattern `effects` window | `FX_EFFECT_UNSUPPORTED` | `/patterns/<name>/effects/<index>` |
-| A pattern `commands` entry | `FX_COMMAND_UNSUPPORTED` | `/patterns/<name>/commands/<index>` |
+| Loop region larger than the ring (no resident wrap) | `LOOP_NOT_EXPORTED` (warning; finite arrangement exported once) | `/loop` |
+| A loop with no representable cycle (no tracks / zero-time) | `LOOP_CYCLE_INVALID` | `/loop` |
+| A pass record larger than the ring or the controlled service window | `DUE_GROUP_TOO_LARGE` | first source event in the widest group |
+| Channel group > 255 bytes, or a gap beyond the 65535-tick varint | `LIMIT_EXCEEDED` | source event |
+| An op with no compact command encoding / a traversal op | `CAPABILITY_UNSUPPORTED` | source event |
 
-`capabilities --json` advertises the FX backend for `build` with
-`loops`/`effects`/`commands`/`sfx` explicitly `false`. Effect and live-command
-families are rejected, never silently dropped (ATMlib2FX-3ii.14.4).
+The admission ring is configurable: `--ring N` (power of two, `5..256`, default
+32) or the `ring` argument to `fx_backend.build`/`serialize`. A larger ring can
+admit a loop region that the default 32 B ring rejects; the host enforces the
+same record/region bounds the device build (`ATM_FX_COMPACT_RING`) requires.
+
+`capabilities --json` advertises the FX backend for `build` with `effects` and
+`commands` supported, `loops` supported when the decoder is built with
+`ATM_FX_COMPACT_LOOP=1` (stated explicitly), and `sfx` false. Effect and
+live-command families are encoded, never silently dropped; a family is admitted
+exactly when `progmem_backend.encode_op` can encode it.

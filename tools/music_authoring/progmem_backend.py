@@ -503,21 +503,26 @@ def capability_summary() -> dict:
 
     available = availability()
     backends = dict(available["backend"])
-    # The finite-v1 FX adapter is now supported for `build --backend fx`
-    # (stream framing selected by ATMlib2FX-hlh.6).  Advertise only finite v1:
-    # loops, live effects, live commands and SFX are explicitly not offered.
-    # The adapter rejects pattern `effects`/`commands` with FX_EFFECT_UNSUPPORTED
-    # / FX_COMMAND_UNSUPPORTED rather than silently dropping them.
+    # The compact FX adapter is supported for `build --backend fx` (stream
+    # framing selected by ATMlib2FX-hlh.6, loop extension by ATMlib2FX-hlh.8).
+    # Effects and live commands encode to the same command bytecode the compact
+    # decoder parses (progmem_backend.encode_op is authoritative). Global loops
+    # are exported with the pinned 0xC1 framing when the whole loop region fits
+    # the ring; the decoder consumes restart masks / effect-only passes only
+    # when built with ATM_FX_COMPACT_LOOP=1 (default 0), so that gating is
+    # reported explicitly instead of overclaimed. SFX is never offered.
     backends["fx"] = {
         "available": True,
         "command": "build",
         "format": "atm_fx_compact_v1",
         "ring_capacity": 32,
+        "ring_configurable": {"default": 32, "max": 256, "option": "--ring"},
         "finite_v1": True,
         "advertises": {
-            "loops": False,
-            "effects": False,
-            "commands": False,
+            "loops": True,
+            "loops_require_build_flag": "ATM_FX_COMPACT_LOOP=1",
+            "effects": True,
+            "commands": True,
             "sfx": False,
         },
     }
@@ -535,6 +540,9 @@ def capability_summary() -> dict:
         "validate",
         "fx_stream_export",
         "finite_v1_fx",
+        "fx_loops",
+        "fx_effects",
+        "fx_commands",
         "packing_metadata",
     ]
     return {

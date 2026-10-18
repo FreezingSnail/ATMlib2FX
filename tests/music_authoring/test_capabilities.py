@@ -124,7 +124,9 @@ class CapabilityStableFieldsTests(unittest.TestCase):
         features = capability_summary()["features"]
         for required in ("validate", "progmem_export", "fx_stream_export", "finite_v1_fx"):
             self.assertIn(required, features)
-        self.assertNotIn("fx_loops", features)
+        for advertised in ("fx_loops", "fx_effects", "fx_commands"):
+            self.assertIn(advertised, features)
+        self.assertNotIn("fx_sfx", features)
 
 
 if __name__ == "__main__":

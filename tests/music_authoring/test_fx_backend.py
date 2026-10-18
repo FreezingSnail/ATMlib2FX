@@ -117,6 +117,62 @@ def cmd_size(command: int) -> int:
     return 1 + (((command >> 4) & 0x07) + 1)
 
 
+def decode_loop_stream(stream: bytes):
+    """Decode the pinned 0xC1 loop stream; return (loop_start_rel, passes, end).
+
+    Each pass dict adds ``restart`` (the record's bits 4..7 restart mask).
+    """
+    assert stream[0] == fx.FORMAT_MAGIC_LOOP, stream[0]
+    loop_start_rel = stream[1] | (stream[2] << 8) | (stream[3] << 16)
+    passes = []
+    pos = fx.LOOP_HEADER
+    while True:
+        length = stream[pos]
+        pos += 1
+        if length == 0:
+            assert pos == len(stream)
+            return loop_start_rel, passes, pos
+        assert length >= fx.MIN_LOOP_RECORD_LEN and length <= fx.RING_CAPACITY, length
+        start = pos
+        b0 = stream[pos]
+        pos += 1
+        if b0 < 0x80:
+            gap = b0
+        elif b0 != 0xFF:
+            gap = ((b0 & 0x7F) << 8) | stream[pos]
+            pos += 1
+        else:
+            gap = (stream[pos] << 8) | stream[pos + 1]
+            pos += 2
+        raw = stream[pos]
+        pos += 1
+        bitmap = raw & 0x0F
+        restart = raw >> 4
+        groups = {}
+        ids = []
+        for channel in range(4):
+            if not (bitmap & (1 << channel)):
+                continue
+            glen = stream[pos]
+            pos += 1
+            assert glen >= 1, glen
+            body = stream[pos : pos + glen]
+            pos += glen
+            cursor = 0
+            while cursor < len(body):
+                command = body[cursor]
+                size = cmd_size(command)
+                assert cursor + size <= len(body), (command, cursor, len(body))
+                ids.append(command)
+                cursor += size
+            assert cursor == len(body), (cursor, len(body))
+            groups[channel] = body
+        assert pos - start + 1 == length, (pos - start + 1, length)
+        passes.append(
+            {"gap": gap, "bitmap": bitmap, "restart": restart, "groups": groups, "ids": ids}
+        )
+
+
 # Traversal-only / unsupported opcodes that must never survive into finite v1.
 TRAVERSAL_IDS = frozenset({0x81, 0x82, 0x83, 0x85, 0x95})
 
@@ -236,6 +292,67 @@ def gate_document(duration, tick_rate=60):
         },
         "tracks": {"pulse0": [{"pattern": "long", "repeat": 1}]},
     }
+
+
+def tiny_loop_document():
+    """A 2-tick one-channel loop that fits the 32-byte ring (region = 22 B)."""
+    return {
+        "format": "atmlib-score",
+        "version": 1,
+        "id": "fx_loop_probe",
+        "loop": True,
+        "clock": {"tick_rate": 50, "ticks_per_beat": 25, "beats_per_bar": 4},
+        "instruments": {"lead": {"voice": "pulse", "volume": 80, "duty": 127}},
+        "patterns": {
+            "beat": {
+                "ticks": 2,
+                "events": [
+                    {"at": 0, "note": "C4", "duration": 1, "instrument": "lead"}
+                ],
+            }
+        },
+        "tracks": {"pulse0": [{"pattern": "beat", "repeat": 1}]},
+    }
+
+
+def medium_loop_document():
+    """A 16-tick one-channel loop whose region is larger than the 32 B ring."""
+    events = [
+        {"at": offset, "note": "C4", "duration": 1, "instrument": "lead"}
+        for offset in (0, 4, 8, 12)
+    ]
+    return {
+        "format": "atmlib-score",
+        "version": 1,
+        "id": "fx_loop_medium",
+        "loop": True,
+        "clock": {"tick_rate": 60, "ticks_per_beat": 25, "beats_per_bar": 4},
+        "instruments": {"lead": {"voice": "pulse", "volume": 80, "duty": 127}},
+        "patterns": {"run": {"ticks": 16, "events": events}},
+        "tracks": {"pulse0": [{"pattern": "run", "repeat": 1}]},
+    }
+
+
+LOOP_FIXTURE_REL = "examples/music_authoring/fx/loop/song.json"
+
+# Hand-computed pinned 0xC1 bytes for ``tiny_loop_document`` (and the matching
+# examples/music_authoring/fx/loop/song.json fixture):
+#   C1 1B 00 00                 header, loop_start_rel = 27
+#   11 01 0F 07 <setup+note> <STOP> <STOP> <STOP>   intro tick 0 (17 B)
+#   06 01 01 02 74 00           intro tick 1 mute (6 B)
+#   05 00 11 01 61              terminal STOP + restart mask 0x1 (5 B)
+#   0B 01 01 07 <setup+note>    re-arm pass, tracked channel only (11 B)
+#   06 01 01 02 74 00           loop copy of tick 1 (6 B)
+#   00                          END
+LOOP_TINY_HEX = (
+    "c11b0000"
+    "11010f0772327450767f19016101610161"
+    "060101027400"
+    "0500110161"
+    "0b01010772327450767f19"
+    "060101027400"
+    "00"
+)
 
 
 class FramingTests(unittest.TestCase):
@@ -397,36 +514,44 @@ class PackingMetadataTests(unittest.TestCase):
         self.assertGreaterEqual(meta["required_window_bytes"], widest)
         self.assertLessEqual(meta["required_window_bytes"], fx.RING_CAPACITY)
 
-    def test_loop_warns_and_is_not_advertised(self):
-        # A looping source is still exported finite, with a source-pointed warning.
+    def test_over_large_loop_warns_and_falls_back_finite(self):
+        # A looping source whose loop region exceeds the 32 B ring is exported as
+        # the finite 0xC0 arrangement with a source-pointed warning (never
+        # silently looped). The default 32 B ring cannot hold the region.
         looping = load("examples/music_authoring/basic/song.json")
-        stream, _meta, warnings = fx.serialize_compact(looping, lower(looping))
-        self.assertTrue(stream)
+        stream, meta, warnings = fx.serialize_compact(looping, lower(looping))
+        self.assertEqual(stream[0], 0xC0)
+        self.assertFalse(meta["loop_exported"])
         codes = [(w.code, w.path, w.severity) for w in warnings]
         self.assertIn(("LOOP_NOT_EXPORTED", "/loop", "warning"), codes)
-        summary = capability_summary()
-        self.assertFalse(summary["backends"]["fx"]["advertises"]["loops"])
 
-    def test_capabilities_advertise_finite_fx_only(self):
+    def test_capabilities_advertise_supported_matrix(self):
         summary = capability_summary()
-        self.assertTrue(summary["backends"]["fx"]["available"])
-        self.assertEqual(summary["backends"]["fx"]["format"], "atm_fx_compact_v1")
-        self.assertEqual(
-            summary["backends"]["fx"]["advertises"],
-            {"loops": False, "effects": False, "commands": False, "sfx": False},
-        )
+        fx_summary = summary["backends"]["fx"]
+        self.assertTrue(fx_summary["available"])
+        self.assertEqual(fx_summary["format"], "atm_fx_compact_v1")
+        advertises = fx_summary["advertises"]
+        self.assertTrue(advertises["loops"])
+        self.assertEqual(advertises["loops_require_build_flag"], "ATM_FX_COMPACT_LOOP=1")
+        self.assertTrue(advertises["effects"])
+        self.assertTrue(advertises["commands"])
+        self.assertFalse(advertises["sfx"])
         self.assertIn("fx_stream_export", summary["features"])
-        for banned in ("fx_loops", "fx_effects", "fx_commands", "fx_sfx"):
-            self.assertNotIn(banned, summary["features"])
+        for feat in ("fx_loops", "fx_effects", "fx_commands"):
+            self.assertIn(feat, summary["features"])
+        self.assertNotIn("fx_sfx", summary["features"])
 
     def test_report_capabilities_match_policy(self):
-        # The per-build report advertises the same finite-v1 policy as
-        # `capabilities`: effects and commands are not offered.
+        # The per-build report advertises the implemented matrix: effects and
+        # live commands encode; loops are exported with the 0xC1 framing when the
+        # region fits the ring (the decoder build flag is stated); no SFX.
         capabilities = self.result.report["capabilities"]
-        self.assertFalse(capabilities["effects"])
-        self.assertFalse(capabilities["commands"])
-        self.assertFalse(capabilities["loops"])
+        self.assertTrue(capabilities["effects"])
+        self.assertTrue(capabilities["commands"])
+        self.assertTrue(capabilities["loops"])
+        self.assertEqual(capabilities["loops_require_build_flag"], "ATM_FX_COMPACT_LOOP=1")
         self.assertFalse(capabilities["sfx"])
+        self.assertFalse(self.result.report["loop_exported"])
 
 
 class GapVarintRecordLenTests(unittest.TestCase):
@@ -638,13 +763,12 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual(diagnostics[0].code, "CAPABILITY_UNSUPPORTED")
 
 
-class EffectCommandAdmissionTests(unittest.TestCase):
-    """Finite-v1 rejects pattern ``effects``/``commands`` (ATMlib2FX-3ii.14.4).
+class EffectCommandSupportTests(unittest.TestCase):
+    """Effects and live commands encode to compact records (ATMlib2FX-hlh.12).
 
-    The pinned contract advertises no live effects or instantaneous commands,
-    and lowering currently ignores both surfaces, so an unguarded export used to
-    drop them silently. Every family now fails with a stable, source-pointed
-    diagnostic instead.
+    The compact decoder applies the same command bytecode as PROGMEM
+    (``cmd_parse.apply_cmd``), so every family lowering emits is admitted and
+    appears in the stream as a record group byte. Nothing is silently dropped.
     """
 
     EFFECT_CASES = (
@@ -658,8 +782,9 @@ class EffectCommandAdmissionTests(unittest.TestCase):
                 "period": 3,
                 "until": 16,
             },
+            0x94,  # ATM_CMD_P_ARPEGGIO_ON
         ),
-        ("note_cut", "pulse", {"at": 0, "type": "note_cut", "period": 2}),
+        ("note_cut", "pulse", {"at": 0, "type": "note_cut", "period": 2}, 0x84),
         (
             "lfo",
             "pulse",
@@ -670,6 +795,7 @@ class EffectCommandAdmissionTests(unittest.TestCase):
                 "depth": 20,
                 "period": 10,
             },
+            0xA6,
         ),
         (
             "slide",
@@ -681,17 +807,30 @@ class EffectCommandAdmissionTests(unittest.TestCase):
                 "amount": 3,
                 "every": 4,
             },
+            0xA1,  # advanced (three-operand) slide form, every > 1
         ),
         (
             "glissando",
             "pulse",
             {"at": 0, "type": "glissando", "period": 4, "direction": "up"},
+            0x83,
         ),
         (
             "noise_retrig",
             "noise",
             {"at": 0, "type": "noise_retrig", "period": 2, "note": "C3"},
+            0x75,
         ),
+    )
+
+    COMMAND_CASES = (
+        ({"at": 4, "type": "set_transposition", "value": -12}, 0x70),
+        ({"at": 0, "type": "add_transposition", "value": 3}, 0x71),
+        ({"at": 8, "type": "set_tempo", "value": 100}, 0x72),
+        ({"at": 0, "type": "add_tempo", "value": 5}, 0x73),
+        ({"at": 0, "type": "set_volume", "value": 40}, 0x74),
+        ({"at": 0, "type": "set_mod", "value": 64}, 0x76),
+        ({"at": 0, "type": "cue", "value": 1}, 0x77),
     )
 
     def _document(self, *, effects=None, commands=None, voice="pulse"):
@@ -726,53 +865,50 @@ class EffectCommandAdmissionTests(unittest.TestCase):
             code = cli_main(argv)
         return code, buffer.getvalue()
 
-    def test_every_effect_family_rejected_with_pointer(self):
-        for kind, voice, effect in self.EFFECT_CASES:
+    @staticmethod
+    def _ids(stream):
+        passes, end = decode_stream(stream)
+        assert end == len(stream)
+        return [command for record in passes for command in record["ids"]]
+
+    def test_every_effect_family_encodes_to_records(self):
+        for kind, voice, effect, opcode in self.EFFECT_CASES:
             with self.subTest(kind=kind):
                 score = make_score(
                     self._document(effects=[effect], voice=voice),
                     rel="<fx-effect-probe>",
                 )
-                with self.assertRaises(fx.FxAdmissionError) as ctx:
-                    fx.serialize_compact(score, lower(score))
-                diagnostic = ctx.exception.diagnostic
-                self.assertEqual(diagnostic.code, "FX_EFFECT_UNSUPPORTED")
-                self.assertEqual(diagnostic.path, "/patterns/p/effects/0")
-                self.assertIn(kind, diagnostic.message)
-                self.assertEqual(
-                    fx.diagnostics_for(ctx.exception)[0].path,
-                    "/patterns/p/effects/0",
-                )
+                stream, meta, warnings = fx.serialize_compact(score, lower(score))
+                self.assertEqual(warnings, [])
+                self.assertEqual(stream[0], 0xC0)
+                ids = self._ids(stream)
+                self.assertIn(opcode, ids)
+                self.assertGreaterEqual(stream[1], fx.MIN_RECORD_LEN)
+                self.assertLessEqual(meta["max_record_bytes"], fx.RING_CAPACITY)
 
-    def test_every_live_command_rejected_with_pointer(self):
-        for command in (
-            {"at": 4, "type": "set_transposition", "value": -12},
-            {"at": 0, "type": "cue", "value": 1},
-            {"at": 8, "type": "set_tempo", "value": 100},
-        ):
+    def test_every_live_command_encodes_to_records(self):
+        for command, opcode in self.COMMAND_CASES:
             with self.subTest(command=command["type"]):
                 score = make_score(
                     self._document(commands=[command]),
                     rel="<fx-command-probe>",
                 )
-                with self.assertRaises(fx.FxAdmissionError) as ctx:
-                    fx.serialize_compact(score, lower(score))
-                diagnostic = ctx.exception.diagnostic
-                self.assertEqual(diagnostic.code, "FX_COMMAND_UNSUPPORTED")
-                self.assertEqual(diagnostic.path, "/patterns/p/commands/0")
-                self.assertIn(command["type"], diagnostic.message)
+                stream, _meta, warnings = fx.serialize_compact(score, lower(score))
+                self.assertEqual(warnings, [])
+                ids = self._ids(stream)
+                self.assertIn(opcode, ids)
 
     def test_effects_are_never_silently_dropped(self):
-        # Regression: lowering ignores pattern effects, so pre-14.4 the stream
-        # was byte-identical to the effect-free score. It must now raise.
+        # Regression: an effect-bearing source must carry the effect opcode; it
+        # may not export as if the surface were absent.
         arpeggio = self.EFFECT_CASES[0][2]
         score = make_score(
             self._document(effects=[arpeggio]), rel="<fx-effect-probe>"
         )
-        lower(score)  # lowering still ignores the surface...
-        with self.assertRaises(fx.FxAdmissionError) as ctx:
-            fx.serialize_compact(score, lower(score))
-        self.assertEqual(ctx.exception.diagnostic.code, "FX_EFFECT_UNSUPPORTED")
+        lower(score)
+        stream, _meta, warnings = fx.serialize_compact(score, lower(score))
+        self.assertEqual(warnings, [])
+        self.assertIn(0x94, self._ids(stream))
 
     def test_effect_free_export_is_unchanged(self):
         score = load(BASIC_REL)
@@ -780,12 +916,13 @@ class EffectCommandAdmissionTests(unittest.TestCase):
         with open(os.path.join(EXPECTED_DIR, "stream.bin"), "rb") as handle:
             self.assertEqual(result.stream_bytes, handle.read())
 
-    def test_build_effect_probe_cli_exits_two_without_assets(self):
+    def test_build_effect_probe_cli_succeeds_with_stream(self):
         out = os.path.join(LANE, "effect-probe")
         os.makedirs(out, exist_ok=True)
         song = os.path.join(out, "song.json")
         with open(song, "w", encoding="utf-8") as handle:
             json.dump(self._document(effects=[self.EFFECT_CASES[0][2]]), handle)
+        assets = os.path.join(out, "assets")
         code, payload = self._run_cli(
             [
                 "build",
@@ -793,20 +930,88 @@ class EffectCommandAdmissionTests(unittest.TestCase):
                 "--backend",
                 "fx",
                 "--out",
-                os.path.join(out, "assets"),
+                assets,
                 "--json",
             ]
         )
-        self.assertEqual(code, 2)
+        self.assertEqual(code, 0)
         body = json.loads(payload)
-        self.assertFalse(body["ok"])
-        diagnostic = body["diagnostics"][0]
-        self.assertEqual(diagnostic["code"], "FX_EFFECT_UNSUPPORTED")
-        self.assertEqual(diagnostic["path"], "/patterns/p/effects/0")
-        self.assertFalse(
-            os.path.exists(os.path.join(out, "assets", "stream.bin")),
-            "an effect-bearing source must not produce assets",
+        self.assertTrue(body["ok"])
+        stream_path = os.path.join(assets, "stream.bin")
+        self.assertTrue(os.path.exists(stream_path))
+        with open(stream_path, "rb") as handle:
+            stream = handle.read()
+        self.assertEqual(stream[0], 0xC0)
+        self.assertIn(0x94, self._ids(stream))
+
+
+class LoopFramingTests(unittest.TestCase):
+    """Pinned 0xC1 loop framing, restart masks and ring admission (hlh.12)."""
+
+    def test_tiny_loop_framing_bytes(self):
+        score = make_score(tiny_loop_document())
+        stream, meta, warnings = fx.serialize_compact(score, lower(score))
+        self.assertEqual(warnings, [])
+        self.assertEqual(stream.hex(), LOOP_TINY_HEX)
+        self.assertTrue(meta["loop_exported"])
+        self.assertEqual(stream[0], fx.FORMAT_MAGIC_LOOP)
+        self.assertEqual(meta["loop_start_rel"], 27)
+        self.assertEqual(meta["loop_region_bytes"], 22)
+        self.assertEqual(meta["loop_cycle_ticks"], 2)
+        self.assertEqual(meta["restart_mask"], 1)
+
+        loop_start_rel, passes, end = decode_loop_stream(stream)
+        self.assertEqual(loop_start_rel, 27)
+        self.assertEqual(end, len(stream))
+        restart_records = [p for p in passes if p["restart"]]
+        self.assertEqual(len(restart_records), 1)
+        self.assertEqual(restart_records[0]["restart"], 1)
+        self.assertIn(0x61, restart_records[0]["ids"])  # STOP in the restart record
+        # The region wraps: the last record leads back to the next cycle.
+        self.assertGreater(passes[-1]["gap"], 0)
+
+    def test_loop_example_fixture_golden(self):
+        score = load(LOOP_FIXTURE_REL)
+        stream, meta, warnings = fx.serialize_compact(score, lower(score))
+        self.assertEqual(warnings, [])
+        self.assertTrue(meta["loop_exported"])
+        self.assertEqual(stream, bytes.fromhex(LOOP_TINY_HEX))
+        expected = os.path.join(
+            REPO_ROOT, "examples/music_authoring/fx/loop/expected/stream.bin"
         )
+        with open(expected, "rb") as handle:
+            self.assertEqual(stream, handle.read())
+
+    def test_ring_overflow_warns_and_configurable_ring_admits(self):
+        score = make_score(medium_loop_document())
+        # A ring large enough exports the pinned loop framing.
+        stream, meta, warnings = fx.serialize_compact(score, lower(score), ring=256)
+        self.assertEqual(warnings, [])
+        self.assertEqual(stream[0], fx.FORMAT_MAGIC_LOOP)
+        self.assertTrue(meta["loop_exported"])
+        region = meta["loop_region_bytes"]
+        self.assertGreater(region, fx.RING_CAPACITY)
+        self.assertLessEqual(region, 256)
+
+        # The default 32 B ring cannot hold the region: the finite arrangement is
+        # exported with a source-pointed overflow warning, never silently looped.
+        stream32, meta32, warnings32 = fx.serialize_compact(score, lower(score))
+        self.assertEqual(stream32[0], 0xC0)
+        self.assertFalse(meta32["loop_exported"])
+        self.assertIn("LOOP_NOT_EXPORTED", [w.code for w in warnings32])
+
+        # A ring that fits admits the loop again.
+        stream_fit, meta_fit, _warnings = fx.serialize_compact(
+            score, lower(score), ring=region
+        )
+        self.assertEqual(stream_fit[0], fx.FORMAT_MAGIC_LOOP)
+        self.assertTrue(meta_fit["loop_exported"])
+
+    def test_ring_out_of_range_is_rejected(self):
+        score = make_score(tiny_loop_document())
+        with self.assertRaises(fx.FxAdmissionError) as ctx:
+            fx.serialize_compact(score, lower(score), ring=512)
+        self.assertEqual(ctx.exception.diagnostic.code, "LIMIT_EXCEEDED")
 
 
 class CliTests(unittest.TestCase):

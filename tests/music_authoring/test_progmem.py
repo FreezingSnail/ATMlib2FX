@@ -185,19 +185,22 @@ class SerializationTests(unittest.TestCase):
 
 
 class CapabilityTests(unittest.TestCase):
-    def test_fx_advertised_finite_only_and_render_available(self):
+    def test_fx_advertised_supported_matrix_and_render_available(self):
         summary = capability_summary()
         self.assertTrue(summary["backends"]["progmem"]["available"])
-        # FX is now supported for `build --backend fx` (finite v1 only).
+        # FX is now supported for `build --backend fx` with effects, live
+        # commands and resident loops (loops gated by the decoder build flag).
         self.assertTrue(summary["backends"]["fx"]["available"])
         self.assertEqual(summary["backends"]["fx"]["format"], "atm_fx_compact_v1")
         self.assertEqual(summary["backends"]["fx"]["command"], "build")
-        self.assertEqual(
-            summary["backends"]["fx"]["advertises"],
-            {"loops": False, "effects": False, "commands": False, "sfx": False},
-        )
+        advertises = summary["backends"]["fx"]["advertises"]
+        self.assertTrue(advertises["loops"])
+        self.assertEqual(advertises["loops_require_build_flag"], "ATM_FX_COMPACT_LOOP=1")
+        self.assertTrue(advertises["effects"])
+        self.assertTrue(advertises["commands"])
+        self.assertFalse(advertises["sfx"])
         self.assertIn("finite_v1_fx", summary["features"])
-        self.assertNotIn("fx_loops", summary["features"])
+        self.assertIn("fx_loops", summary["features"])
         # The live capabilities report matches the working commands; only the
         # embedded 3ii.1 review golden keeps the old pinned block.
         self.assertTrue(summary["capabilities"]["inspect"]["available"])

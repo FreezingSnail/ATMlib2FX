@@ -285,3 +285,134 @@ int fx_image_compose(const uint8_t *stream, uint32_t stream_len,
 	*image_len_out = image_len;
 	return 0;
 }
+
+/* --- multi-stream layout and composition --------------------------------- */
+
+int fx_image_layout_multi(const uint32_t *stream_lens, uint32_t stream_count,
+	int has_bitmap, uint32_t bitmap_data_len,
+	uint32_t chip_bytes, uint32_t page_bytes,
+	struct fx_multi_layout *out, char *err, size_t errlen)
+{
+	if (page_bytes == 0 || (page_bytes & (page_bytes - 1u)) != 0) {
+		return fail(err, errlen, "page size must be a non-zero power of two");
+	}
+	if (!stream_lens || stream_count == 0) {
+		return fail(err, errlen, "no streams");
+	}
+	if (stream_count > FX_IMAGE_MAX_STREAMS) {
+		return fail(err, errlen, "too many streams");
+	}
+
+	uint64_t rel = 0;
+	for (uint32_t i = 0; i < stream_count; i++) {
+		if (stream_lens[i] == 0) {
+			return failf(err, errlen, "stream %u is empty", i);
+		}
+		if (stream_lens[i] > 0xFFFFFFu) {
+			return failf(err, errlen,
+				"stream %u is larger than a 24-bit extent", i);
+		}
+		rel += stream_lens[i];
+	}
+
+	uint64_t image_len = rel;
+	uint32_t bitmap_offset = 0;
+	uint32_t bitmap_len = 0;
+	if (has_bitmap) {
+		if (bitmap_data_len == 0) {
+			return fail(err, errlen, "bitmap data is empty");
+		}
+		bitmap_offset = (uint32_t)rel;
+		bitmap_len = FX_IMAGE_BITMAP_HEADER_BYTES + bitmap_data_len;
+		image_len += bitmap_len;
+	}
+
+	uint64_t data_bytes = (image_len + page_bytes - 1u) /
+		page_bytes * page_bytes;
+	if (data_bytes > chip_bytes) {
+		return fail(err, errlen, "image does not fit the FX chip");
+	}
+
+	uint32_t data_offset = (uint32_t)(chip_bytes - data_bytes);
+	if (data_offset % page_bytes != 0) {
+		return fail(err, errlen, "data base is not page aligned");
+	}
+
+	memset(out, 0, sizeof(*out));
+	out->stream_count = stream_count;
+	uint64_t off = 0;
+	for (uint32_t i = 0; i < stream_count; i++) {
+		out->stream_offset[i] = (uint32_t)off;
+		out->stream_len[i] = stream_lens[i];
+		off += stream_lens[i];
+	}
+	out->has_bitmap = has_bitmap ? 1u : 0u;
+	out->bitmap_offset = bitmap_offset;
+	out->bitmap_data_len = has_bitmap ? bitmap_data_len : 0;
+	out->bitmap_len = bitmap_len;
+	out->image_len = (uint32_t)image_len;
+	out->data_bytes = (uint32_t)data_bytes;
+	out->data_offset = data_offset;
+	out->data_page = data_offset / page_bytes;
+	out->abs_bitmap_end = data_offset + (uint32_t)image_len;
+	out->chip_bytes = chip_bytes;
+	out->page_bytes = page_bytes;
+	out->fits_24bit = (out->abs_bitmap_end <= 0x01000000u) &&
+		(chip_bytes <= 0x01000000u) &&
+		(data_offset <= 0xFFFFFFu) ? 1u : 0u;
+	return 0;
+}
+
+int fx_image_compose_multi(const uint8_t *const *streams,
+	const uint32_t *stream_lens, uint32_t stream_count,
+	const struct fx_bitmap *bm,
+	uint8_t **image_out, size_t *image_len_out,
+	char *err, size_t errlen)
+{
+	if (!streams || !stream_lens || stream_count == 0) {
+		return fail(err, errlen, "no streams");
+	}
+	if (stream_count > FX_IMAGE_MAX_STREAMS) {
+		return fail(err, errlen, "too many streams");
+	}
+
+	uint64_t total = 0;
+	for (uint32_t i = 0; i < stream_count; i++) {
+		if (!streams[i] || stream_lens[i] == 0) {
+			return failf(err, errlen, "stream %u is empty", i);
+		}
+		total += stream_lens[i];
+	}
+
+	size_t bitmap_len = 0;
+	if (bm) {
+		if (!bm->data || bm->data_len == 0) {
+			return fail(err, errlen, "bitmap is empty");
+		}
+		bitmap_len = FX_IMAGE_BITMAP_HEADER_BYTES + bm->data_len;
+	}
+
+	const size_t image_len = (size_t)total + bitmap_len;
+	uint8_t *image = (uint8_t *)malloc(image_len);
+	if (!image) {
+		return fail(err, errlen, "out of memory for image");
+	}
+
+	uint8_t *p = image;
+	for (uint32_t i = 0; i < stream_count; i++) {
+		memcpy(p, streams[i], stream_lens[i]);
+		p += stream_lens[i];
+	}
+	if (bm) {
+		p[0] = (uint8_t)(bm->width >> 8);
+		p[1] = (uint8_t)(bm->width & 0xFF);
+		p[2] = (uint8_t)(bm->height >> 8);
+		p[3] = (uint8_t)(bm->height & 0xFF);
+		p += FX_IMAGE_BITMAP_HEADER_BYTES;
+		memcpy(p, bm->data, bm->data_len);
+	}
+
+	*image_out = image;
+	*image_len_out = image_len;
+	return 0;
+}

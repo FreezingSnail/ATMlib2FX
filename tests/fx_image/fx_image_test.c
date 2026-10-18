@@ -221,6 +221,215 @@ static void test_compose(void)
 	fx_bitmap_free(&bm);
 }
 
+/* --- multi-stream mode ----------------------------------------------------- */
+
+/* Three streams packed densely in input order then the bitmap. */
+static void test_multi_layout_offsets(void)
+{
+	char err[256];
+	struct fx_multi_layout M;
+	uint32_t lens[3] = { 5, 7, 3 };
+	CHECK(fx_image_layout_multi(lens, 3, 1, 64,
+		FX_IMAGE_CHIP_BYTES_DEFAULT, FX_IMAGE_PAGE_BYTES_DEFAULT,
+		&M, err, sizeof(err)) == 0, "multi layout failed: %s", err);
+	CHECK(M.stream_count == 3, "count %u", M.stream_count);
+	CHECK(M.stream_offset[0] == 0, "off0 %u", M.stream_offset[0]);
+	CHECK(M.stream_offset[1] == 5, "off1 %u", M.stream_offset[1]);
+	CHECK(M.stream_offset[2] == 12, "off2 %u", M.stream_offset[2]);
+	CHECK(M.stream_len[0] == 5 && M.stream_len[1] == 7 &&
+		M.stream_len[2] == 3, "lens");
+	CHECK(M.has_bitmap == 1, "has_bitmap %u", M.has_bitmap);
+	CHECK(M.bitmap_offset == 15, "bitmap_offset %u", M.bitmap_offset);
+	CHECK(M.bitmap_len == 68, "bitmap_len %u", M.bitmap_len);
+	CHECK(M.image_len == 83, "image_len %u", M.image_len);
+	CHECK(M.data_bytes == 256, "data_bytes %u", M.data_bytes);
+	/* The page is added exactly once; every abs address is base+relative. */
+	CHECK(M.data_offset % M.page_bytes == 0, "data base not page aligned");
+	CHECK(M.abs_bitmap_end == M.data_offset + M.image_len,
+		"abs end %u", M.abs_bitmap_end);
+	CHECK(M.abs_bitmap_end <= 0x01000000u, "abs end 24-bit");
+	CHECK(M.fits_24bit == 1, "fits_24bit %u", M.fits_24bit);
+}
+
+/* A one-stream image must match the legacy single-stream layout byte-for-byte
+ * (single mode is the golden). */
+static void test_multi_equals_single(void)
+{
+	char err[256];
+	struct fx_layout L;
+	struct fx_multi_layout M;
+	uint32_t lens[1] = { 1572 };
+	CHECK(fx_image_layout(1572, 64, FX_IMAGE_CHIP_BYTES_DEFAULT,
+		FX_IMAGE_PAGE_BYTES_DEFAULT, &L, err, sizeof(err)) == 0,
+		"single layout failed");
+	CHECK(fx_image_layout_multi(lens, 1, 1, 64,
+		FX_IMAGE_CHIP_BYTES_DEFAULT, FX_IMAGE_PAGE_BYTES_DEFAULT,
+		&M, err, sizeof(err)) == 0, "multi layout failed");
+	CHECK(M.stream_offset[0] == 0, "off0 %u", M.stream_offset[0]);
+	CHECK(M.stream_len[0] == L.stream_len, "len");
+	CHECK(M.bitmap_offset == L.bitmap_offset, "bitmap_offset");
+	CHECK(M.image_len == L.image_len, "image_len");
+	CHECK(M.data_bytes == L.data_bytes, "data_bytes");
+	CHECK(M.data_offset == L.data_offset, "data_offset");
+	CHECK(M.data_page == L.data_page, "data_page");
+	CHECK(M.abs_bitmap_end == L.abs_bitmap_end, "abs end");
+
+	/* Compose bytes: [stream][bitmap header][bitmap data]. */
+	uint8_t stream[8] = { 0xC0, 1, 2, 3, 4, 5, 6, 7 };
+	struct fx_bitmap bm;
+	CHECK(fx_image_fixture_bitmap(32, 16, &bm, err, sizeof(err)) == 0,
+		"fixture failed");
+	uint8_t *img1 = NULL, *img2 = NULL;
+	size_t n1 = 0, n2 = 0;
+	CHECK(fx_image_compose(stream, sizeof(stream), &bm, &img1, &n1,
+		err, sizeof(err)) == 0, "compose single failed");
+	const uint8_t *streams[1] = { stream };
+	uint32_t ls[1] = { sizeof(stream) };
+	CHECK(fx_image_compose_multi(streams, ls, 1, &bm, &img2, &n2,
+		err, sizeof(err)) == 0, "compose multi failed");
+	CHECK(n1 == n2, "compose len %zu %zu", n1, n2);
+	CHECK(memcmp(img1, img2, n1) == 0, "compose single/multi differ");
+	free(img1);
+	free(img2);
+	fx_bitmap_free(&bm);
+}
+
+/* Byte parity of each embedded stream against its source, and determinism. */
+static void test_multi_parity_and_determinism(void)
+{
+	char err[256];
+	uint8_t a[4] = { 0xC0, 0xAA, 0xBB, 0x00 };
+	uint8_t b[6] = { 0xC1, 1, 2, 3, 4, 5 };
+	uint8_t c[2] = { 0xC0, 0x7F };
+	const uint8_t *streams[3] = { a, b, c };
+	uint32_t lens[3] = { sizeof(a), sizeof(b), sizeof(c) };
+	struct fx_bitmap bm;
+	CHECK(fx_image_fixture_bitmap(32, 16, &bm, err, sizeof(err)) == 0,
+		"fixture failed");
+
+	uint8_t *img = NULL;
+	size_t n = 0;
+	CHECK(fx_image_compose_multi(streams, lens, 3, &bm, &img, &n,
+		err, sizeof(err)) == 0, "compose failed: %s", err);
+
+	struct fx_multi_layout M;
+	CHECK(fx_image_layout_multi(lens, 3, 1, (uint32_t)bm.data_len,
+		FX_IMAGE_CHIP_BYTES_DEFAULT, FX_IMAGE_PAGE_BYTES_DEFAULT,
+		&M, err, sizeof(err)) == 0, "layout failed");
+	CHECK((size_t)M.image_len == n, "image_len %u != %zu", M.image_len, n);
+
+	/* Every stream payload appears at its declared offset. */
+	CHECK(memcmp(img + M.stream_offset[0], a, sizeof(a)) == 0, "parity s0");
+	CHECK(memcmp(img + M.stream_offset[1], b, sizeof(b)) == 0, "parity s1");
+	CHECK(memcmp(img + M.stream_offset[2], c, sizeof(c)) == 0, "parity s2");
+	/* Bitmap header then data at the declared offset. */
+	CHECK(img[M.bitmap_offset] == 0x00 && img[M.bitmap_offset + 1] == 32,
+		"bm header width");
+	CHECK(memcmp(img + M.bitmap_offset + 4, bm.data, bm.data_len) == 0,
+		"bm parity");
+
+	/* Determinism: a second compose is byte-identical. */
+	uint8_t *img2 = NULL;
+	size_t n2 = 0;
+	CHECK(fx_image_compose_multi(streams, lens, 3, &bm, &img2, &n2,
+		err, sizeof(err)) == 0, "compose2 failed");
+	CHECK(n == n2 && memcmp(img, img2, n) == 0, "not deterministic");
+	free(img);
+	free(img2);
+	fx_bitmap_free(&bm);
+}
+
+static void test_multi_no_bitmap(void)
+{
+	char err[256];
+	struct fx_multi_layout M;
+	uint32_t lens[2] = { 10, 20 };
+	CHECK(fx_image_layout_multi(lens, 2, 0, 0, 16u * 1024u * 1024u, 256,
+		&M, err, sizeof(err)) == 0, "layout failed: %s", err);
+	CHECK(M.has_bitmap == 0, "has_bitmap %u", M.has_bitmap);
+	CHECK(M.bitmap_len == 0, "bitmap_len %u", M.bitmap_len);
+	CHECK(M.bitmap_offset == 0, "bitmap_offset %u", M.bitmap_offset);
+	CHECK(M.image_len == 30, "image_len %u", M.image_len);
+	CHECK(M.data_bytes == 256, "data_bytes %u", M.data_bytes);
+	CHECK(M.abs_bitmap_end == M.data_offset + 30, "abs end");
+
+	uint8_t a[10], b[20];
+	memset(a, 0x11, sizeof(a));
+	memset(b, 0x22, sizeof(b));
+	const uint8_t *streams[2] = { a, b };
+	uint8_t *img = NULL;
+	size_t n = 0;
+	CHECK(fx_image_compose_multi(streams, lens, 2, NULL, &img, &n,
+		err, sizeof(err)) == 0, "compose failed: %s", err);
+	CHECK(n == 30, "compose len %zu", n);
+	CHECK(memcmp(img, a, 10) == 0 && memcmp(img + 10, b, 20) == 0,
+		"streams-only parity");
+	free(img);
+}
+
+static void test_multi_page_math(void)
+{
+	char err[256];
+	struct fx_multi_layout M;
+	/* sum streams + header + bitmap == 1024 exactly. */
+	uint32_t lens[1] = { 900 };
+	CHECK(fx_image_layout_multi(lens, 1, 1, 120, 16u * 1024u * 1024u, 256,
+		&M, err, sizeof(err)) == 0, "layout failed: %s", err);
+	CHECK(M.image_len == 1024, "image_len %u", M.image_len);
+	CHECK(M.data_bytes == 1024, "data_bytes %u", M.data_bytes);
+	/* One byte over -> next page. */
+	CHECK(fx_image_layout_multi(lens, 1, 1, 121, 16u * 1024u * 1024u, 256,
+		&M, err, sizeof(err)) == 0, "layout failed");
+	CHECK(M.image_len == 1025, "image_len %u", M.image_len);
+	CHECK(M.data_bytes == 1280, "data_bytes %u", M.data_bytes);
+	CHECK(M.data_page == M.data_offset / 256, "page math");
+}
+
+static void test_multi_layout_rejections(void)
+{
+	char err[256];
+	struct fx_multi_layout M;
+	uint32_t lens[3] = { 5, 7, 3 };
+	uint32_t one_empty[1] = { 0 };
+	uint32_t big[1] = { 0x1000000u };
+
+	CHECK(fx_image_layout_multi(NULL, 0, 0, 0, 16u * 1024u * 1024u, 256,
+		&M, err, sizeof(err)) != 0, "empty stream list accepted");
+	CHECK(fx_image_layout_multi(lens, FX_IMAGE_MAX_STREAMS + 1, 0, 0,
+		16u * 1024u * 1024u, 256, &M, err, sizeof(err)) != 0,
+		"too many streams accepted");
+	CHECK(fx_image_layout_multi(one_empty, 1, 0, 0, 16u * 1024u * 1024u,
+		256, &M, err, sizeof(err)) != 0, "empty stream accepted");
+	CHECK(fx_image_layout_multi(big, 1, 0, 0, 16u * 1024u * 1024u, 256,
+		&M, err, sizeof(err)) != 0, "24-bit overflow accepted");
+	CHECK(fx_image_layout_multi(lens, 3, 1, 0, 16u * 1024u * 1024u, 256,
+		&M, err, sizeof(err)) != 0, "empty bitmap accepted");
+	CHECK(fx_image_layout_multi(lens, 3, 0, 0, 16u * 1024u * 1024u, 200,
+		&M, err, sizeof(err)) != 0, "non-pow2 page accepted");
+	CHECK(fx_image_layout_multi(lens, 3, 1, 0xFFFFFFu, 16u * 1024u * 1024u,
+		256, &M, err, sizeof(err)) != 0, "oversize image accepted");
+}
+
+static void test_multi_compose_rejections(void)
+{
+	char err[256];
+	uint8_t a[4] = { 1, 2, 3, 4 };
+	const uint8_t *streams[1] = { a };
+	uint32_t lens[1] = { sizeof(a) };
+	uint8_t *img = NULL;
+	size_t n = 0;
+	CHECK(fx_image_compose_multi(NULL, lens, 1, NULL, &img, &n,
+		err, sizeof(err)) != 0, "null streams accepted");
+	uint32_t empty[1] = { 0 };
+	CHECK(fx_image_compose_multi(streams, empty, 1, NULL, &img, &n,
+		err, sizeof(err)) != 0, "empty stream accepted");
+	/* A bitmap with no data must be rejected when supplied. */
+	struct fx_bitmap zero;
+	memset(&zero, 0, sizeof(zero));
+	CHECK(fx_image_compose_multi(streams, lens, 1, &zero, &img, &n,
+		err, sizeof(err)) != 0, "empty bitmap accepted");
+}
+
 int main(void)
 {
 	test_layout_reference();
@@ -233,6 +442,13 @@ int main(void)
 	test_pbm_p4_matches_p1();
 	test_pbm_rejections();
 	test_compose();
+	test_multi_layout_offsets();
+	test_multi_equals_single();
+	test_multi_parity_and_determinism();
+	test_multi_no_bitmap();
+	test_multi_page_math();
+	test_multi_layout_rejections();
+	test_multi_compose_rejections();
 
 	printf("fx_image_test: %d checks, %d failures\n", checks, failures);
 	return failures == 0 ? 0 : 1;

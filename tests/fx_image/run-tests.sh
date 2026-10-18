@@ -41,7 +41,10 @@ echo "cc   : $($CC --version 2>/dev/null | head -1)"
     tools/fx_image/fx_image.c tools/fx_image/fx_image_core.c \
     tools/fx_image/fx_image_core.h tools/fx_image/Makefile \
     tests/fx_image/fx_image_test.c tests/fx_image/run-tests.sh \
-    "$REF_PACKER" "$PBM"; do
+    tests/fx_image/run-multi-evidence.sh \
+    "$REF_PACKER" "$PBM" \
+    examples/music_authoring/fx/basic/expected/stream.bin \
+    examples/music_authoring/fx/stress/expected/stream.bin; do
     shasum -a 256 "$f"
   done
 } > "$OUT/source-hashes.txt"
@@ -126,6 +129,94 @@ cmp -s "$OUT/example.bin" "$OUT/example2.bin" \
   || { echo "FAIL: packing not deterministic" >&2; exit 1; }
 echo "determinism: byte-identical across runs"
 
+# ---- multi-stream mode (ATMlib2FX-hlh.13) ----------------------------------
+MOUT="build/fx-port/image-multi"
+mkdir -p "$MOUT"
+MBASIC="examples/music_authoring/fx/basic/expected/stream.bin"
+MSTRESS="examples/music_authoring/fx/stress/expected/stream.bin"
+B_BASIC=$(wc -c < "$MBASIC" | tr -d ' ')
+B_STRESS=$(wc -c < "$MSTRESS" | tr -d ' ')
+# A tiny loop stream (version byte 0xC1) to exercise the loop flag.
+printf '\301\005\000\001\020\002\006\007\100\000\005\001\002\014\016\004\002\006\010\000\000' > "$MOUT/loop.bin"
+
+"$FX_IMAGE" \
+  --stream basic:"$MBASIC" --stream stress:"$MSTRESS" --stream loop:"$MOUT/loop.bin" \
+  --bitmap "$PBM" \
+  --out "$MOUT/fxdata.bin" --meta "$MOUT/meta.json" \
+  --header "$MOUT/fxdata_config.h" > "$MOUT/fxdata.meta"
+
+mmeta() { awk -F= -v k="$1" '$1==k{print $2}' "$MOUT/fxdata.meta"; }
+M_COUNT=$(mmeta stream_count)
+M_OFF1=$(mmeta stream1_offset)
+M_OFF2=$(mmeta stream2_offset)
+M_BOFF=$(mmeta bitmap_offset)
+M_IMAGELEN=$(mmeta image_len)
+M_PAGE=$(mmeta data_page)
+M_ABS0=$(mmeta abs_stream0_addr)
+[ "$M_COUNT" = "3" ] || { echo "FAIL: multi stream_count $M_COUNT != 3" >&2; exit 1; }
+[ "$M_OFF1" = "$B_BASIC" ] || { echo "FAIL: stream1 offset $M_OFF1 != $B_BASIC" >&2; exit 1; }
+[ "$M_OFF2" = "$((B_BASIC + B_STRESS))" ] || { echo "FAIL: stream2 offset $M_OFF2" >&2; exit 1; }
+[ "$M_BOFF" = "$((B_BASIC + B_STRESS + 21))" ] || { echo "FAIL: bitmap offset $M_BOFF" >&2; exit 1; }
+[ "$M_IMAGELEN" = "$((M_BOFF + 68))" ] || { echo "FAIL: image_len $M_IMAGELEN" >&2; exit 1; }
+[ "$M_ABS0" = "$((M_PAGE * 256))" ] || { echo "FAIL: page added wrong: $M_ABS0" >&2; exit 1; }
+grep -q "^#define FX_STREAM_COUNT 3$" "$MOUT/fxdata_config.h" \
+  || { echo "FAIL: header FX_STREAM_COUNT" >&2; exit 1; }
+grep -q "^#define FX_STREAM_1_OFFSET $B_BASIC$" "$MOUT/fxdata_config.h" \
+  || { echo "FAIL: header FX_STREAM_1_OFFSET" >&2; exit 1; }
+grep -q "^#define FX_STREAM_2_LOOP 1$" "$MOUT/fxdata_config.h" \
+  || { echo "FAIL: header loop flag for the 0xC1 stream" >&2; exit 1; }
+grep -q "FX_STREAM_0_LOOP 0" "$MOUT/fxdata_config.h" \
+  || { echo "FAIL: header finite flag" >&2; exit 1; }
+echo "multi: count=3 offsets=$M_OFF1,$M_OFF2 bitmap_offset=$M_BOFF data_page=$M_PAGE image_len=$M_IMAGELEN"
+
+# Read each embedded stream back from the image and require byte parity.
+dd if="$MOUT/fxdata.bin" of="$MOUT/rb_basic.bin" bs=1 skip=0 \
+  count="$B_BASIC" 2>/dev/null
+cmp -s "$MOUT/rb_basic.bin" "$MBASIC" \
+  || { echo "FAIL: embedded basic stream parity" >&2; exit 1; }
+dd if="$MOUT/fxdata.bin" of="$MOUT/rb_stress.bin" bs=1 skip="$M_OFF1" \
+  count="$B_STRESS" 2>/dev/null
+cmp -s "$MOUT/rb_stress.bin" "$MSTRESS" \
+  || { echo "FAIL: embedded stress stream parity" >&2; exit 1; }
+echo "multi: embedded stream byte parity ok"
+
+# Determinism (no timestamps).
+"$FX_IMAGE" \
+  --stream basic:"$MBASIC" --stream stress:"$MSTRESS" --stream loop:"$MOUT/loop.bin" \
+  --bitmap "$PBM" --out "$MOUT/fxdata2.bin" > /dev/null
+cmp -s "$MOUT/fxdata.bin" "$MOUT/fxdata2.bin" \
+  || { echo "FAIL: multi-stream packing not deterministic" >&2; exit 1; }
+# The optional bitmap may be omitted.
+"$FX_IMAGE" --stream basic:"$MBASIC" --stream stress:"$MSTRESS" \
+  --out "$MOUT/fxdata_nobm.bin" > "$MOUT/fxdata_nobm.meta"
+[ "$(awk -F= '/^bitmap=/{print $2}' "$MOUT/fxdata_nobm.meta")" = "0" ] \
+  || { echo "FAIL: streams-only image should report bitmap=0" >&2; exit 1; }
+echo "multi: deterministic; streams-only image packs without a bitmap"
+
+# Multi-stream admission rejections.
+if "$FX_IMAGE" --stream a:"$MBASIC" --stream a:"$MSTRESS" \
+    --out "$MOUT/bad.bin" > /dev/null 2>&1; then
+  echo "FAIL: duplicate stream name accepted" >&2
+  exit 1
+fi
+if "$FX_IMAGE" --stream a:"$MOUT/empty_never.bin" \
+    --out "$MOUT/bad.bin" > /dev/null 2>&1; then
+  echo "FAIL: missing stream file accepted" >&2
+  exit 1
+fi
+: > "$MOUT/empty.bin"
+if "$FX_IMAGE" --stream a:"$MOUT/empty.bin" \
+    --out "$MOUT/bad.bin" > /dev/null 2>&1; then
+  echo "FAIL: empty stream accepted" >&2
+  exit 1
+fi
+if "$FX_IMAGE" --stream a:"$MBASIC" --stream plain_path \
+    --out "$MOUT/bad.bin" > /dev/null 2>&1; then
+  echo "FAIL: mixed named/plain streams accepted" >&2
+  exit 1
+fi
+echo "multi: duplicate name, empty stream and mixed forms rejected"
+
 # ---- admission rejections through the CLI ---------------------------------
 if "$FX_IMAGE" --stream "$STREAM" --bitmap "$PBM" --page-bytes 200 \
     --out "$OUT/bad.bin" > /dev/null 2>&1; then
@@ -141,5 +232,5 @@ echo "rejections: non-power-of-two page and missing bitmap rejected"
 echo
 echo "artifacts and hashes:"
 shasum -a 256 "$OUT/example.bin" "$OUT/fx_fixture.bin" "$OUT/note.raw" \
-  | sed 's/^/  /'
-echo "results: $OUT"
+  "$MOUT/fxdata.bin" | sed 's/^/  /'
+echo "results: $OUT (single) and $MOUT (multi)"

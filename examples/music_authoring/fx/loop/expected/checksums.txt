@@ -1,0 +1,4 @@
+# Compact FX loop fixture expected assets (ATMlib2FX-hlh.12).
+# Regenerate: tools/atm-music build examples/music_authoring/fx/loop/song.json --backend fx --out examples/music_authoring/fx/loop/expected --json
+320fede6e05922a5ee59f26cd217b60d7e5911d51d4e9ac87775841fa36c5eb4  song.json
+78bfb23d9c5f48ef3d38e94b017e0e52c31d10bbbebbab8c2dd34e06883d4c87  expected/stream.bin

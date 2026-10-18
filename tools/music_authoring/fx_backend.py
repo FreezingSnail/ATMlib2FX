@@ -1,49 +1,67 @@
-"""Deterministic compact FX stream backend (finite v1) — ATMlib2FX-3ii.3.
+"""Deterministic compact FX stream backend — ATMlib2FX-3ii.3 / ATMlib2FX-hlh.12.
 
 Serializes a validated v1 authoring score into the **pinned compact stream**
 selected by ``ATMlib2FX-hlh.6`` (``research/fx/fx-architecture-decision.md``,
-section "hlh.6 review").  This is an offline host adapter only: it emits
-deterministic bytes plus packing metadata, never runtime code, and adds no
-parser or state to the device.
+section "hlh.6 review") and its global-loop extension ``ATMlib2FX-hlh.8``.  This
+is an offline host adapter only: it emits deterministic bytes plus packing
+metadata, never runtime code, and adds no parser or state to the device.
 
 Pinned framing (little-endian, one byte per integer)::
 
-    byte 0   0xC0  version header (skipped by the decoder)
-    records until END:
-      <len> <gap> <bitmap> <groups>
-      <gap>    effect-only ticks until the next pass (next_tick - tick - 1)
-      <bitmap> bit0..bit3 = channels with commands this pass (1..15)
-      <groups> per set channel in order 0..3: <glen> then <glen> command bytes
-    0x00        END (a single length byte)
+    finite stream (0xC0)::
+        byte 0    0xC0  version header (skipped by the decoder)
+        records until END
+        0x00           END (a single length byte)
 
-Admission follows the selected contract: ``len <= ring`` (default 32 B), no
-traversal commands (``CALL``/repeats/``SET_LOOP_PATTERN``), no effects, no live
-commands and no SFX in finite v1.  Everything the adapter cannot represent is
-rejected with a diagnostic that points at the offending source JSON Pointer (or
-the instrument preset), never silently dropped.
+    loop stream (0xC1, ATMlib2FX-hlh.8)::
+        byte 0    0xC1  loop header
+        u24 LE    loop_start_rel   byte offset of the first loop-region record
+        records until END          (same record framing as finite)
+        0x00           END is the loop boundary, not a stop
 
-Effect and live-command admission is explicit and per family (finite-v1 compact
-adapter policy, ``ATMlib2FX-3ii.14.4``):
+    record::
+        <len> <gap> <bitmap> <groups>
+        <gap>    finite: effect-only idle ticks (next_tick - tick - 1)
+                 loop:   tick delta to the next pass (0 = same-tick extra pass)
+        <bitmap> finite: bits 0..3 = channels with commands this pass (1..15)
+                 loop:   bits 0..3 command channels, bits 4..7 restart mask;
+                         bitmap == 0 is an effect-only pass
+        <groups> per set channel in order 0..3: <glen> then <glen> command bytes
 
-* The pinned contract (``ATMlib2FX-hlh.6``) advertises no live effects and no
-  instantaneous commands.  The framing's ``<gap>`` field records *effect-only
-  idle ticks between passes*, which is not a license to reshape, reschedule or
-  silently drop an authored effect.
-* A pattern that declares ``effects`` is rejected with ``FX_EFFECT_UNSUPPORTED``
-  pointing at ``/patterns/<name>/effects/<index>``; a pattern that declares
-  ``commands`` is rejected with ``FX_COMMAND_UNSUPPORTED`` pointing at
-  ``/patterns/<name>/commands/<index>``.  Both are hard admission errors, one
-  stable code per family.
-* No family is admitted in this revision.  None is exactly representable
-  within the pinned ring / service-window rules without changing the AVR
-  decoder or the pinned framing (both out of scope here), so the adapter does
-  not guess.
+Gap varint: ``<=0x7F`` one byte; ``<=0x7EFF`` two bytes (``0x80|hi7``, ``lo8``);
+otherwise three bytes (``0xFF``, ``hi8``, ``lo8``); maximum 65535.
 
-A runtime global loop is not representable by the finite stream (the decoder
-stops at END or when every voice stops).  The adapter therefore exports the
-finite arrangement exactly once and records ``LOOP_NOT_EXPORTED`` (a warning,
-not a silent capability claim); ``capabilities`` never advertises loop support
-for this backend.
+Command bytes keep the original ATMlib encoding (``src/atm_cmd_constants.h``) and
+the compact decoder applies them with the same ``apply_cmd`` the PROGMEM stream
+uses.  The adapter reuses ``progmem_backend.encode_op`` as the authoritative
+encoder, so an effect/command byte is never invented here.  Traversal commands
+(``CALL``/repeats/``SET_LOOP_PATTERN``) are resolved offline and never appear.
+
+Admission policy:
+
+* **Effects and live commands are supported** (``ATMlib2FX-3ii.14.4`` revision).
+  Every family lowering emits (arpeggio, note_cut, lfo, slide, glissando,
+  noise_retrig and set/add tempo, set/add transposition, set_volume, set_mod,
+  cue) encodes to a compact record with the correct per-channel mask.  The
+  decoder parses the same command bytecode as PROGMEM, so a family is admitted
+  exactly when ``progmem_backend.encode_op`` can encode it.
+* **Global loops are exported** with the pinned ``0xC1`` framing when the whole
+  loop region fits the admission ring.  The adapter works from lowered
+  ``DeviceOp`` streams, so a loop region is the arrangement once, prefixed by
+  the all-stopped restart protocol: the terminal STOP record carries the
+  per-record restart mask (bits 4..7) and the re-arm pass (the arrangement's
+  tick-0 commands for the looping channels) repeats the original's immediate
+  same-tick second pass, including the effect-only pass when that tick has no
+  note/volume ops.
+* **Resident loops only.**  The device pins the loop region and replays it in
+  place; a region larger than the ring would need a streaming wrap, which the
+  pinned contract rejects.  Such a score falls back to the finite ``0xC0``
+  stream (the arrangement once) and reports ``LOOP_NOT_EXPORTED`` with the
+  measured region size and ring, so nothing is silently truncated.  The ring is
+  configurable (``--ring`` / the ``ring`` argument, default 32, power of two,
+  max 256) for scores that exceed the default but still fit a larger ring.
+* **Limits.**  Each record must fit the ring; the gap varint is capped at 65535;
+  the controlled foreground service window is preflighted exactly as finite v1.
 """
 
 from __future__ import annotations
@@ -55,12 +73,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .lower import (
+    COMMAND_OP_NAMES,
+    EFFECT_OP_NAMES,
     Lowered,
     build_review_payload,
     clock_report,
     serialize_review,
     validate_summary,
 )
+from .progmem_backend import encode_op as _progmem_encode_op
 from .score import (
     CHANNEL_NAMES,
     ENGINE_NAME,
@@ -80,6 +101,8 @@ BACKEND_NAME = "fx"
 BACKEND_VERSION = "1"
 FORMAT_NAME = "atm_fx_compact_v1"
 FORMAT_MAGIC = 0xC0
+FORMAT_MAGIC_LOOP = 0xC1
+LOOP_HEADER = 4  # magic + u24 little-endian loop_start_rel
 END_BYTE = 0x00
 CHANNEL_COUNT = 4
 
@@ -87,6 +110,9 @@ CHANNEL_COUNT = 4
 RING_CAPACITY = 32
 FETCH_CHUNK = 16
 MIN_RECORD_LEN = 5
+MIN_LOOP_RECORD_LEN = 3
+MIN_RING = 5
+MAX_RING = 256
 MAX_RECORD_LEN = RING_CAPACITY if RING_CAPACITY < 255 else 255
 
 # Pinned gap varint maximum: effect-only ticks strictly between two passes
@@ -104,19 +130,19 @@ ATM_CMD_1P_SET_TEMPO = 0x72
 ATM_CMD_1P_SET_VOLUME = 0x74
 ATM_CMD_1P_SET_MOD = 0x76
 
-# Finite v1 advertises no live effects / commands / SFX / traversal.
+# Traversal ops resolving them offline keeps out of the emitted stream.
 _TRAVERSAL_OPS = frozenset({"call", "call_repeat", "loop", "pattern_end", "return"})
 
-# Stable per-family admission codes for the additive v1 pattern surface.
-# The pinned contract advertises no effects or live commands; a score that
-# authors either family is rejected (never silently dropped) with one of these
-# codes and the offending source JSON Pointer.
-FX_EFFECT_UNSUPPORTED = "FX_EFFECT_UNSUPPORTED"
-FX_COMMAND_UNSUPPORTED = "FX_COMMAND_UNSUPPORTED"
+# The decoder build flag that gates the loop extension (src/atm_fx_compact.h).
+LOOP_BUILD_FLAG = "ATM_FX_COMPACT_LOOP=1"
+
+# Ring-overflow diagnostics.
+LOOP_NOT_EXPORTED = "LOOP_NOT_EXPORTED"
+LOOP_CYCLE_INVALID = "LOOP_CYCLE_INVALID"
 
 
 class FxAdmissionError(ScoreError):
-    """Inadmissible finite-v1 content; carries a source-pointed diagnostic."""
+    """Inadmissible content; carries a source-pointed diagnostic."""
 
     def __init__(self, code: str, path: str, message: str, suggestion: str):
         super().__init__(message)
@@ -137,23 +163,51 @@ class BuildResult:
         return hashlib.sha256(self.stream_bytes).hexdigest()
 
 
+def _param(op, name):
+    """Fetch one typed operand from an op's ordered ``params`` payload."""
+    for key, value in op.params:
+        if key == name:
+            return value
+    raise ScoreError(f"device op {op.op!r} is missing operand {name!r}")
+
+
 def _op_bytes(op) -> list[int]:
-    """Encode one typed device op exactly as the original ATMlib encoding."""
+    """Encode one typed device op exactly as the original ATMlib encoding.
+
+    Note, rest, mute, tempo, volume and modulation keep the adapter's explicit
+    bytes; every effect/command op defers to ``progmem_backend.encode_op`` (the
+    authoritative per-op encoder), so the compact decoder sees exactly the
+    bytecode the PROGMEM backend emits for the same op.
+    """
     if op.op == "set_tempo":
         return [ATM_CMD_1P_SET_TEMPO, op.tick_rate]
     if op.op == "set_volume":
-        return [ATM_CMD_1P_SET_VOLUME, op.volume]
+        if getattr(op, "volume", None) is not None:
+            return [ATM_CMD_1P_SET_VOLUME, op.volume]
+        return [ATM_CMD_1P_SET_VOLUME, _param(op, "value")]
     if op.op == "set_mod":
-        return [ATM_CMD_1P_SET_MOD, op.duty]
+        if getattr(op, "duty", None) is not None:
+            return [ATM_CMD_1P_SET_MOD, op.duty]
+        return [ATM_CMD_1P_SET_MOD, _param(op, "value")]
     if op.op == "note":
         return [op.note_index]
     if op.op == "mute":
         return [ATM_CMD_1P_SET_VOLUME, 0x00]
+    if op.op in EFFECT_OP_NAMES or op.op in COMMAND_OP_NAMES:
+        try:
+            return list(_progmem_encode_op(op))
+        except ScoreError as exc:
+            raise FxAdmissionError(
+                "CAPABILITY_UNSUPPORTED",
+                getattr(op, "source", ""),
+                f"device op {op.op!r} is not encodable in the compact stream: {exc}",
+                "Check the effect/command operands or the PROGMEM backend.",
+            )
     raise FxAdmissionError(
         "CAPABILITY_UNSUPPORTED",
         getattr(op, "source", ""),
-        f"device op {op.op!r} is not part of finite v1 (no effects/SFX).",
-        "Use notes, rests, pulse duty and instrument volume only.",
+        f"device op {op.op!r} is not part of the compact music stream.",
+        "Use notes, rests, pulse duty, instruments, effects or live commands.",
     )
 
 
@@ -212,7 +266,8 @@ class _Pass:
     tick: int
     bitmap: int
     groups: list[tuple[int, bytes, str]]  # (channel index, payload, source)
-    gap: int = 0  # effect-only ticks to the next pass (last pass: 0)
+    gap: int = 0  # to the next pass (finite: idle-1; loop: tick delta)
+    restart: int = 0  # loop mode: bits 4..7 of the record bitmap
 
     @property
     def record_len(self) -> int:
@@ -235,7 +290,8 @@ class _Pass:
         return sum(len(payload) for _, payload, _ in self.groups)
 
 
-def _collect_passes(score: Score, lowered: Lowered) -> list[_Pass]:
+def _arrangement_passes(score: Score, lowered: Lowered) -> list[_Pass]:
+    """One pass per tick that carries channel commands (gaps unset)."""
     per_channel = [
         channel_events(score, lowered, name) for name in CHANNEL_NAMES
     ]
@@ -252,6 +308,12 @@ def _collect_passes(score: Score, lowered: Lowered) -> list[_Pass]:
             bitmap |= 1 << index
             groups.append((index, payload, source))
         passes.append(_Pass(tick=tick, bitmap=bitmap, groups=groups))
+    return passes
+
+
+def _collect_passes(score: Score, lowered: Lowered) -> list[_Pass]:
+    """Finite-v1 passes with ``gap = next_tick - tick - 1``."""
+    passes = _arrangement_passes(score, lowered)
     for index in range(len(passes) - 1):
         passes[index].gap = passes[index + 1].tick - passes[index].tick - 1
     return passes
@@ -291,24 +353,25 @@ def _service_ticks(score: Score) -> int:
     return int(FRAME_SECONDS / interval) + 1
 
 
+def _validate_ring(ring: int) -> None:
+    if ring < MIN_RING or ring > MAX_RING:
+        raise FxAdmissionError(
+            "LIMIT_EXCEEDED",
+            "",
+            f"ring must be in [{MIN_RING}, {MAX_RING}] bytes, got {ring}.",
+            "Use a power-of-two ring between 5 and 256 (the decoder build cap).",
+        )
+
+
 def _admission(
-    score: Score, lowered: Lowered, passes: list[_Pass], total_ticks: int
+    score: Score,
+    lowered: Lowered,
+    passes: list[_Pass],
+    total_ticks: int,
+    ring: int,
 ) -> tuple[list[Diagnostic], dict]:
     diagnostics: list[Diagnostic] = []
 
-    if score.loop:
-        diagnostics.append(
-            Diagnostic(
-                "LOOP_NOT_EXPORTED",
-                "/loop",
-                (
-                    "finite v1 cannot represent a runtime global loop; the "
-                    "arrangement is exported exactly once and stops at its end."
-                ),
-                "Set \"loop\": false for a finite FX export.",
-                severity="warning",
-            )
-        )
     # Reject any unsupported op / SFX / traversal that may reach this adapter.
     for _channel, ops in lowered.ops.items():
         for op in ops:
@@ -317,7 +380,7 @@ def _admission(
                     "CAPABILITY_UNSUPPORTED",
                     op.source,
                     f"traversal op {op.op!r} must be resolved offline.",
-                    "Use finite pattern repeats; loops are not part of finite v1.",
+                    "Use finite pattern repeats; loops are the 0xC1 extension.",
                 )
 
     max_record = 0
@@ -330,14 +393,14 @@ def _admission(
                 "a pass carries no channel commands (nonprogressing record).",
                 "Report this as a tool failure.",
             )
-        if p.record_len > MAX_RECORD_LEN:
+        if p.record_len > ring:
             offender = max(p.groups, key=lambda g: len(g[1]))
             raise FxAdmissionError(
                 "DUE_GROUP_TOO_LARGE",
                 offender[2],
                 (
                     f"pass at tick {p.tick} is {p.record_len} bytes, larger than "
-                    f"the {RING_CAPACITY}-byte ring."
+                    f"the {ring}-byte ring."
                 ),
                 "Split the event, lower the tick rate, or build with a larger ring.",
             )
@@ -376,24 +439,24 @@ def _admission(
     window = _window_table(passes, total_ticks)
     service_ticks = _service_ticks(score)
     required_window = window[min(service_ticks, max(window))] if window else 0
-    if window.get(1, 0) > RING_CAPACITY:
+    if window.get(1, 0) > ring:
         raise FxAdmissionError(
             "DUE_GROUP_TOO_LARGE",
             _widest_source(passes),
             (
                 f"largest pass record is {window[1]} bytes, larger than the "
-                f"{RING_CAPACITY}-byte ring."
+                f"{ring}-byte ring."
             ),
             "Split the event or build with a larger ring.",
         )
-    if required_window > RING_CAPACITY:
+    if required_window > ring:
         raise FxAdmissionError(
             "DUE_GROUP_TOO_LARGE",
             "/clock/tick_rate",
             (
                 f"at tick_rate {score.clock.tick_rate} the worst "
                 f"{service_ticks}-tick service window is {required_window} bytes, "
-                f"larger than the {RING_CAPACITY}-byte ring."
+                f"larger than the {ring}-byte ring."
             ),
             "Raise the tick rate interval (lower tick_rate), split events, or "
             "build with a larger ring.",
@@ -417,81 +480,245 @@ def _widest_source(passes: list[_Pass]) -> str:
     return offender[2]
 
 
-def reject_effect_families(score: Score) -> None:
-    """Reject pattern ``effects`` / ``commands`` before any byte is emitted.
+def _build_loop(score: Score, lowered: Lowered):
+    """Build the pinned 0xC1 loop extent from the lowered ops, or None.
 
-    The finite-v1 compact stream advertises neither live effects nor
-    instantaneous commands, and the framing's effect-only gap ticks are idle
-    ticks, not a license to reshape an authored effect.  Every family is
-    rejected with a stable, source-pointed diagnostic (one code per family), so
-    an effect- or command-bearing score fails loudly instead of silently
-    exporting as if the surface were absent.
-
-    Raises:
-        FxAdmissionError: ``FX_EFFECT_UNSUPPORTED`` at
-            ``/patterns/<name>/effects/<index>`` or ``FX_COMMAND_UNSUPPORTED``
-            at ``/patterns/<name>/commands/<index>``.
+    Returns ``(intro, loop_passes, loop_start_rel, region_bytes, cycle_ticks)``.
+    ``intro`` is the arrangement played once (ticks ``< cycle``); ``loop_passes``
+    is the pinned, replayed region: the terminal STOP record (restart mask) and
+    the re-arm pass, then the arrangement's later passes.  Returns ``None`` when
+    the score has no representable cycle (no tracks or a zero-time cycle).
     """
-    for name, pattern in score.patterns.items():
-        if pattern.effects:
-            window = pattern.effects[0]
+    if not score.tracks:
+        return None
+    total = lowered.total_ticks
+    if total <= 0:
+        return None
+    tracked = [index for index, name in enumerate(CHANNEL_NAMES) if name in score.tracks]
+    if not tracked:
+        return None
+    tracked_set = set(tracked)
+    restart_mask = 0
+    for index in tracked:
+        restart_mask |= 1 << index
+
+    arrangement = _arrangement_passes(score, lowered)
+    intro = [p for p in arrangement if p.tick < total]
+    terminal = [p for p in arrangement if p.tick == total]
+    if len(terminal) != 1:
+        return None
+    terminal = terminal[0]
+    terminal.restart = restart_mask
+
+    tick0 = next((p for p in intro if p.tick == 0), None)
+    rearm_groups = (
+        [(idx, body, src) for (idx, body, src) in tick0.groups if idx in tracked_set]
+        if tick0 is not None
+        else []
+    )
+    rearm_bitmap = 0
+    for idx, _body, _src in rearm_groups:
+        rearm_bitmap |= 1 << idx
+    rearm = _Pass(tick=total, bitmap=rearm_bitmap, groups=rearm_groups)
+
+    copies = [
+        _Pass(tick=total + p.tick, bitmap=p.bitmap, groups=list(p.groups))
+        for p in intro
+        if p.tick > 0
+    ]
+    loop_passes = [terminal, rearm] + copies
+
+    # Cyclic gaps: a loop-mode gap is the tick delta to the next pass; the last
+    # record wraps to the terminal STOP of the next cycle.
+    for index, p in enumerate(loop_passes):
+        nxt = loop_passes[index + 1].tick if index + 1 < len(loop_passes) else loop_passes[0].tick + total
+        delta = nxt - p.tick
+        if delta < 0:
+            return None
+        p.gap = delta
+    for index, p in enumerate(intro):
+        nxt = intro[index + 1].tick if index + 1 < len(intro) else loop_passes[0].tick
+        p.gap = nxt - p.tick
+
+    region_bytes = sum(p.record_len for p in loop_passes)
+    intro_bytes = sum(p.record_len for p in intro)
+    loop_start_rel = LOOP_HEADER + intro_bytes
+    return intro, loop_passes, loop_start_rel, region_bytes, total
+
+
+def _loop_admission(
+    score: Score,
+    lowered: Lowered,
+    intro: list[_Pass],
+    loop_passes: list[_Pass],
+    region_bytes: int,
+    ring: int,
+) -> tuple[list[Diagnostic], dict]:
+    """Preflight the loop stream before serialization (record + region bounds)."""
+    all_passes = intro + loop_passes
+    max_record = 0
+    max_group = 0
+    for p in all_passes:
+        if p.record_len > ring:
             raise FxAdmissionError(
-                FX_EFFECT_UNSUPPORTED,
-                pointer("patterns", name, "effects", window.index),
+                "DUE_GROUP_TOO_LARGE",
+                (p.groups[0][2] if p.groups else "/loop"),
                 (
-                    f"pattern {name!r} declares a {window.kind!r} effect window; "
-                    "finite v1 cannot represent live effects."
+                    f"loop record at tick {p.tick} is {p.record_len} bytes, larger "
+                    f"than the {ring}-byte ring."
                 ),
-                (
-                    "Remove the effect window. Finite v1 encodes notes, rests, "
-                    "pulse duty, fixed instrument volume and the clock only; "
-                    "author the sound with note events or build with the PROGMEM "
-                    "backend."
-                ),
+                "Split the event or build with a larger ring.",
             )
-        if pattern.commands:
-            command = pattern.commands[0]
+        max_record = max(max_record, p.record_len)
+        max_group = max(max_group, p.payload_bytes)
+        if p.gap > GAP_VARINT_MAX:
             raise FxAdmissionError(
-                FX_COMMAND_UNSUPPORTED,
-                pointer("patterns", name, "commands", command.index),
-                (
-                    f"pattern {name!r} declares a {command.kind!r} live command; "
-                    "finite v1 cannot represent instantaneous commands."
-                ),
-                (
-                    "Remove the live command. Finite v1 carries the score clock "
-                    "only; express the change with note or instrument events or "
-                    "build with the PROGMEM backend."
-                ),
+                "LIMIT_EXCEEDED",
+                (p.groups[0][2] if p.groups else "/loop"),
+                f"loop gap of {p.gap} ticks exceeds the {GAP_VARINT_MAX}-tick varint maximum.",
+                "Add an event before the next pass or lower the tick rate.",
             )
 
+    # The intro is streamed; the same foreground service-window preflight the
+    # finite path applies must hold while it is consumed.
+    window = _window_table(intro, lowered.total_ticks)
+    service_ticks = _service_ticks(score)
+    required_window = window[min(service_ticks, max(window))] if window else 0
+    if required_window > ring:
+        raise FxAdmissionError(
+            "DUE_GROUP_TOO_LARGE",
+            "/clock/tick_rate",
+            (
+                f"at tick_rate {score.clock.tick_rate} the worst "
+                f"{service_ticks}-tick service window is {required_window} bytes, "
+                f"larger than the {ring}-byte ring."
+            ),
+            "Lower tick_rate, split events, or build with a larger ring.",
+        )
 
-def serialize_compact(score: Score, lowered: Lowered) -> tuple[bytes, dict, list[Diagnostic]]:
-    """Build the pinned byte stream plus packing metadata."""
-    reject_effect_families(score)
-    passes = _collect_passes(score, lowered)
-    diagnostics, metrics = _admission(score, lowered, passes, lowered.total_ticks)
+    metrics = {
+        "max_record": max_record,
+        "max_group": max_group,
+        "window_bytes": {str(k): v for k, v in sorted(window.items())},
+        "service_ticks": service_ticks,
+        "required_window_bytes": required_window,
+        "loop_region_bytes": region_bytes,
+        "loop_ring": ring,
+    }
+    return [], metrics
 
+
+def _write_record(out: bytearray, p: _Pass, loop_mode: bool) -> None:
+    out.append(p.record_len)
+    out.extend(_gap_bytes(p.gap))
+    bitmap = p.bitmap & 0x0F
+    if loop_mode:
+        bitmap |= (p.restart & 0x0F) << 4
+    out.append(bitmap)
+    for _ch, body, _src in p.groups:
+        out.append(len(body))
+        out.extend(body)
+
+
+def _serialize_finite(passes: list[_Pass]) -> bytes:
     out = bytearray()
     out.append(FORMAT_MAGIC)
-    payload_total = 0
-    framing_total = 0
     for p in passes:
-        out.append(p.record_len)
-        out.extend(_gap_bytes(p.gap))
-        out.append(p.bitmap)
-        for _ch, body, _src in p.groups:
-            out.append(len(body))
-            out.extend(body)
-        payload_total += p.payload_bytes
-        framing_total += p.record_len
+        _write_record(out, p, loop_mode=False)
     out.append(END_BYTE)
+    return bytes(out)
 
-    stream = bytes(out)
+
+def _serialize_loop(intro: list[_Pass], loop_passes: list[_Pass], loop_start_rel: int) -> bytes:
+    out = bytearray()
+    out.append(FORMAT_MAGIC_LOOP)
+    out.extend(
+        [
+            loop_start_rel & 0xFF,
+            (loop_start_rel >> 8) & 0xFF,
+            (loop_start_rel >> 16) & 0xFF,
+        ]
+    )
+    for p in intro:
+        _write_record(out, p, loop_mode=True)
+    for p in loop_passes:
+        _write_record(out, p, loop_mode=True)
+    out.append(END_BYTE)
+    return bytes(out)
+
+
+def _loop_fallback_diagnostic(region_bytes: int, ring: int, total: int) -> Diagnostic:
+    return Diagnostic(
+        LOOP_NOT_EXPORTED,
+        "/loop",
+        (
+            f"the loop region is {region_bytes} bytes, larger than the {ring}-byte "
+            f"ring; the device pins and replays the whole region, so a resident "
+            f"loop is not representable. The finite 0xC0 arrangement is exported "
+            f"once and stops at its end."
+        ),
+        (
+            "Build with a larger --ring (power of two, max 256) if the cycle fits, "
+            "or shorten the loop / export the finite arrangement."
+        ),
+        severity="warning",
+    )
+
+
+def serialize_compact(
+    score: Score, lowered: Lowered, ring: int = RING_CAPACITY
+) -> tuple[bytes, dict, list[Diagnostic]]:
+    """Build the pinned byte stream plus packing metadata."""
+    _validate_ring(ring)
+    diagnostics: list[Diagnostic] = []
+
+    loop_exported = False
+    loop_meta: dict = {}
+    if score.loop:
+        built = _build_loop(score, lowered)
+        if built is None:
+            raise FxAdmissionError(
+                LOOP_CYCLE_INVALID,
+                "/loop",
+                "the loop has no representable cycle (no tracks or a zero-time cycle).",
+                "Add at least one track/event, or set \"loop\": false.",
+            )
+        intro, loop_passes, loop_start_rel, region_bytes, cycle_ticks = built
+        if region_bytes <= ring:
+            _diag, metrics = _loop_admission(
+                score, lowered, intro, loop_passes, region_bytes, ring
+            )
+            stream = _serialize_loop(intro, loop_passes, loop_start_rel)
+            loop_exported = True
+            passes_count = len(loop_passes)
+            payload_total = sum(p.payload_bytes for p in loop_passes)
+            framing_total = sum(p.record_len for p in loop_passes)
+            loop_meta = {
+                "loop_start_rel": loop_start_rel,
+                "loop_region_bytes": region_bytes,
+                "loop_cycle_ticks": cycle_ticks,
+                "intro_bytes": loop_start_rel - LOOP_HEADER,
+                "loop_passes": len(loop_passes),
+                "intro_passes": len(intro),
+                "restart_mask": loop_passes[0].restart if loop_passes else 0,
+            }
+        else:
+            diagnostics.append(
+                _loop_fallback_diagnostic(region_bytes, ring, lowered.total_ticks)
+            )
+
+    if not loop_exported:
+        passes = _collect_passes(score, lowered)
+        _diag, metrics = _admission(score, lowered, passes, lowered.total_ticks, ring)
+        stream = _serialize_finite(passes)
+        passes_count = len(passes)
+        payload_total = sum(p.payload_bytes for p in passes)
+        framing_total = sum(p.record_len for p in passes)
+
     metadata = {
         "stream_bytes": len(stream),
         "ticks": lowered.total_ticks,
-        "passes": len(passes),
+        "passes": passes_count,
         "payload_bytes": payload_total,
         "framing_bytes": framing_total,
         "max_group_bytes": metrics["max_group"],
@@ -499,15 +726,19 @@ def serialize_compact(score: Score, lowered: Lowered) -> tuple[bytes, dict, list
         "window_bytes": metrics["window_bytes"],
         "service_ticks": metrics["service_ticks"],
         "required_window_bytes": metrics["required_window_bytes"],
-        "ring_capacity": RING_CAPACITY,
+        "ring_capacity": ring,
         "fetch_chunk": FETCH_CHUNK,
+        "loop_exported": loop_exported,
+        "magic": stream[0],
         "sha256": hashlib.sha256(stream).hexdigest(),
     }
+    metadata.update(loop_meta)
     return stream, metadata, diagnostics
 
 
 def render_header(score: Score, stream_bytes: bytes) -> bytes:
     digest = hashlib.sha256(stream_bytes).hexdigest()
+    magic = stream_bytes[0] if stream_bytes else FORMAT_MAGIC
     lines = [
         "/* Generated by tools/atm-music (atm-music 1.0.0). Do not edit. */",
         "/* Backend: fx / atm_fx_compact_v1 (finite v1; not the PROGMEM default). */",
@@ -518,7 +749,7 @@ def render_header(score: Score, stream_bytes: bytes) -> bytes:
         "",
         f'#define FX_STREAM_ID "{score.id}"',
         f"#define FX_STREAM_BYTES {len(stream_bytes)}u",
-        f"#define FX_STREAM_MAGIC 0x{FORMAT_MAGIC:02x}u",
+        f"#define FX_STREAM_MAGIC 0x{magic:02x}u",
         f'#define FX_STREAM_SHA256 "{digest}"',
         "",
         "const uint8_t fx_stream[] = {",
@@ -550,10 +781,11 @@ def build_report(
             "name": BACKEND_NAME,
             "version": BACKEND_VERSION,
             "format": FORMAT_NAME,
-            "magic": FORMAT_MAGIC,
-            "ring_capacity": RING_CAPACITY,
+            "magic": stream_bytes[0] if stream_bytes else FORMAT_MAGIC,
+            "ring_capacity": metadata.get("ring_capacity", RING_CAPACITY),
             "fetch_chunk": FETCH_CHUNK,
             "selected_by": "ATMlib2FX-hlh.6",
+            "loop_extension": "ATMlib2FX-hlh.8",
         },
         "engine": {
             "name": ENGINE_NAME,
@@ -572,12 +804,13 @@ def build_report(
         "pattern_instances": len(lowered.pattern_instances),
         "expanded_note_events": len(lowered.spans),
         "required_features": summary["required_features"],
-        "loop_exported": False,
+        "loop_exported": bool(metadata.get("loop_exported", False)),
         "capabilities": {
             "finite_v1": True,
-            "loops": False,
-            "effects": False,
-            "commands": False,
+            "loops": True,
+            "loops_require_build_flag": LOOP_BUILD_FLAG,
+            "effects": True,
+            "commands": True,
             "sfx": False,
             "deterministic_bytes": True,
             "packing_metadata": True,
@@ -599,22 +832,24 @@ def build_report(
         "resource_note": (
             "stream.bin is the FX-section music asset only. It is not engine "
             "code, not static SRAM and not a whole-game memory measurement; the "
-            "packing metadata (max group/record, service window) is asset-shaped, "
-            "not a device stack/flash measurement."
+            "packing metadata (max group/record, service window, loop region) is "
+            "asset-shaped, not a device stack/flash measurement."
         ),
         "avr_measurements": {
             "measured": False,
             "reason": (
                 "This build command does not invoke arduino-cli or the absim "
                 "runner. Device FX-address, ring-wrap and service-gap stress is "
-                "recorded separately under build/music-authoring/fx/."
+                "recorded separately under build/."
             ),
         },
     }
 
 
-def serialize(score: Score, lowered: Lowered, out_dir: str) -> BuildResult:
-    stream_bytes, metadata, diagnostics = serialize_compact(score, lowered)
+def serialize(
+    score: Score, lowered: Lowered, out_dir: str, ring: int = RING_CAPACITY
+) -> BuildResult:
+    stream_bytes, metadata, diagnostics = serialize_compact(score, lowered, ring=ring)
     header_bytes = render_header(score, stream_bytes)
     payload = build_review_payload(score, lowered, diagnostics=diagnostics)
     review_bytes = serialize_review(payload)
@@ -644,8 +879,10 @@ def write_outputs(out_dir: str, result: BuildResult) -> dict:
     return {name: str(directory / name) for name in files}
 
 
-def build(score: Score, lowered: Lowered, out_dir: str) -> tuple[BuildResult, dict]:
-    result = serialize(score, lowered, out_dir)
+def build(
+    score: Score, lowered: Lowered, out_dir: str, ring: int = RING_CAPACITY
+) -> tuple[BuildResult, dict]:
+    result = serialize(score, lowered, out_dir, ring=ring)
     artifacts = write_outputs(out_dir, result)
     return result, artifacts
 
