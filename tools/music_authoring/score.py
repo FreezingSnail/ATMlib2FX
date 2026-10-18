@@ -30,10 +30,60 @@ HOST_LIMITS = {
     "instruments": 64,
     "patterns": 256,
     "source_events": 4096,
+    "source_effects": 4096,
+    "source_commands": 4096,
     "expanded_pattern_uses": 4096,
     "expanded_note_events": 65536,
     "total_ticks": 1048576,
 }
+
+# Additive v1 effect-window kinds (pattern-level optional `effects`). The engine
+# state each kind programs lives in src/atm_synth.h; the exact operand byte
+# mapping is documented in docs/music-authoring-interface.md.
+EFFECT_TYPES = (
+    "arpeggio",
+    "note_cut",
+    "lfo",
+    "slide",
+    "glissando",
+    "noise_retrig",
+)
+
+# Kinds that share one engine state slot. arpeggio and note_cut both program the
+# note-retrigger state (`arpTiming`/`arpNotes`/`arpCount`) and their OFF command
+# is the same immediate opcode (`ATM_CMD_I_ARPEGGIO_OFF`), so they cannot be
+# active together.
+EFFECT_SLOT = {
+    "arpeggio": "retrig",
+    "note_cut": "retrig",
+    "lfo": "lfo",
+    "slide": "slide",
+    "glissando": "glissando",
+    "noise_retrig": "noise_retrig",
+}
+
+# `ATM_CMD_M_NOISE_RETRIG_ON` drives the noise channel only (process_fx gates it
+# on `ch_index == OSC_CH_THREE`); every other v1 effect is scoped to the pulse
+# channels.
+NOISE_EFFECT_TYPES = frozenset({"noise_retrig"})
+PULSE_EFFECT_TYPES = frozenset(EFFECT_TYPES) - NOISE_EFFECT_TYPES
+
+# Additive v1 instantaneous live commands (pattern-level optional `commands`).
+COMMAND_TYPES = (
+    "set_tempo",
+    "add_tempo",
+    "set_transposition",
+    "add_transposition",
+    "set_volume",
+    "set_mod",
+    "cue",
+)
+
+# Commands that write the single shared `atmlib_state` (score-global): they are
+# re-executed by every channel that plays the pattern. The rest write the
+# per-channel `atm_channel_state` of the channel playing the pattern.
+GLOBAL_COMMAND_TYPES = frozenset({"set_tempo", "add_tempo", "cue"})
+CHANNEL_COMMAND_TYPES = frozenset(COMMAND_TYPES) - GLOBAL_COMMAND_TYPES
 
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 IDENTIFIER_MAX_LENGTH = 64
@@ -247,10 +297,74 @@ class NoteEvent:
 
 
 @dataclass(frozen=True)
+class EffectWindow:
+    """One validated pattern-level effect window.
+
+    ``at`` is the inclusive first tick, ``until`` the exclusive end tick
+    (defaults to the pattern length). Only the fields understood by ``kind`` are
+    set; the rest stay ``None``. The byte encoding for each kind is pinned in
+    docs/music-authoring-interface.md.
+
+    Field use by ``kind``:
+
+    * ``arpeggio`` — ``offsets`` (1–2 absolute semitone offsets from the base
+      note, each 0..14; the second offset is the third arpeggio note),
+      ``period`` (1..32 ticks), ``repeat``.
+    * ``note_cut`` — ``period`` (1..32 ticks), ``repeat``.
+    * ``lfo`` — ``mode`` (tremolo/vibrato/modulation), ``depth`` (0..255),
+      ``period`` (even, 2..64 ticks).
+    * ``slide`` — ``param`` (volume/frequency/modulation), ``amount``
+      (-128..127), ``every`` (1..64 ticks).
+    * ``glissando`` — ``period`` (1..128 ticks), ``direction`` (up/down).
+    * ``noise_retrig`` — ``period`` (0..3), ``note`` and ``note_index``.
+    """
+
+    index: int
+    kind: str
+    at: int
+    until: int
+    offsets: tuple[int, ...] | None = None
+    period: int | None = None
+    repeat: bool | None = None
+    mode: str | None = None
+    depth: int | None = None
+    param: str | None = None
+    amount: int | None = None
+    every: int | None = None
+    direction: str | None = None
+    note: str | None = None
+    note_index: int | None = None
+
+    @property
+    def slot(self) -> str:
+        return EFFECT_SLOT[self.kind]
+
+    @property
+    def duration(self) -> int:
+        return self.until - self.at
+
+
+@dataclass(frozen=True)
+class LiveCommand:
+    """One validated instantaneous live command at a pattern tick."""
+
+    index: int
+    kind: str
+    at: int
+    value: int
+
+    @property
+    def is_global(self) -> bool:
+        return self.kind in GLOBAL_COMMAND_TYPES
+
+
+@dataclass(frozen=True)
 class Pattern:
     name: str
     ticks: int
     events: tuple[NoteEvent, ...]
+    effects: tuple[EffectWindow, ...] = ()
+    commands: tuple[LiveCommand, ...] = ()
 
 
 @dataclass(frozen=True)

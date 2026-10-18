@@ -564,8 +564,8 @@ def build_render_report(
             "render": {"available": True},
             "wav_preview": {"available": True},
             "note": (
-                "This render command owns bounded WAV preview. The frontend "
-                "capabilities payload stays pinned by its 3ii.1 golden fixtures."
+                "This render command owns bounded WAV preview; the frontend "
+                "capabilities report advertises render and wav_preview as available."
             ),
         },
         "diagnostics": source_identity_diagnostics,

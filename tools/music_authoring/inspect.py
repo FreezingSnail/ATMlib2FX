@@ -537,8 +537,9 @@ def inspect(
             "inspect": {"available": True},
             "canonical_payload_capabilities_pinned": True,
             "note": (
-                "`capabilities --json` keeps inspect/render pinned unavailable to preserve "
-                "the 3ii.1 review golden; inspect and render report their own availability."
+                "The embedded canonical review payload keeps its byte-stable "
+                "3ii.1-pinned capabilities block; `capabilities --json` and this "
+                "command report their own truthful availability."
             ),
         },
         "side_effects": SIDE_EFFECT_NOTE,

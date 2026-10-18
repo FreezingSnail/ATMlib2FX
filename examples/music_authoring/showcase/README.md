@@ -191,20 +191,19 @@ enable), **not** a production or whole-game cost.
 `python3 -m unittest discover -s tests/music_authoring -p 'test_*.py'`
 → **61 tests, OK (skipped=1)**. This example changes no `tools/` code.
 
-## Known CLI discrepancy: `capabilities` still reports render unavailable
+## `capabilities` matches the working render command
 
-`tools/atm-music capabilities --json` currently reports
+`tools/atm-music capabilities --json` reports
 
 ```
-"render": { "available": false, "reason": "No WAV renderer is implemented in this task; ..." }
+"render": { "available": true }
 ```
 
-while the `render` subcommand **does** work and reports
-`"capabilities": {"render": {"available": true}}`. This is a known, pre-existing
-frontend payload pinned by the ATMlib2FX-3ii.1 golden fixtures (its `note` says
-the frontend payload stays pinned), not a failure of this example. The `render`
-command is authoritative here. **The CLI was not edited** by this task; the
-discrepancy is reported only.
+matching the `render` subcommand, which reports
+`"capabilities": {"render": {"available": true}}`. The ATMlib2FX-3ii.1 golden
+fixtures keep their byte-stable embedded capabilities block, so the fix lives in
+the tool and changes no frozen payload. **This example changes no `tools/` code**;
+the discrepancy is recorded here for continuity.
 
 ## Scope and limitations
 

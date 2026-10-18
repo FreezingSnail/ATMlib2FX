@@ -152,7 +152,7 @@ class SerializationTests(unittest.TestCase):
 
 
 class CapabilityTests(unittest.TestCase):
-    def test_fx_advertised_finite_only_and_render_unavailable(self):
+    def test_fx_advertised_finite_only_and_render_available(self):
         summary = capability_summary()
         self.assertTrue(summary["backends"]["progmem"]["available"])
         # FX is now supported for `build --backend fx` (finite v1 only).
@@ -165,10 +165,11 @@ class CapabilityTests(unittest.TestCase):
         )
         self.assertIn("finite_v1_fx", summary["features"])
         self.assertNotIn("fx_loops", summary["features"])
-        # Pinned divergence: the canonical review payload golden keeps these
-        # unavailable (documented in tests/music_authoring/test_inspect.py).
-        self.assertFalse(summary["capabilities"]["render"]["available"])
-        self.assertFalse(summary["capabilities"]["wav_preview"]["available"])
+        # The live capabilities report matches the working commands; only the
+        # embedded 3ii.1 review golden keeps the old pinned block.
+        self.assertTrue(summary["capabilities"]["inspect"]["available"])
+        self.assertTrue(summary["capabilities"]["render"]["available"])
+        self.assertTrue(summary["capabilities"]["wav_preview"]["available"])
 
     def test_pitch_range_advertised(self):
         summary = capability_summary()

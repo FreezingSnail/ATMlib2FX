@@ -224,6 +224,92 @@ class RootLoopSchemaTests(unittest.TestCase):
         )
 
 
+class EffectAndCommandStructuralTests(unittest.TestCase):
+    """The additive ``effects``/``commands`` keys are structurally optional.
+
+    Semantic range/slot/channel rules live in the CLI validator
+    (``tests/music_authoring/test_effects_schema.py``); this class only pins the
+    public structural shape of the schema.
+    """
+
+    def setUp(self) -> None:
+        self.schema = load_json(SCHEMA_PATH)
+        self.base = load_json(FIXTURE_SONG)
+
+    def _with_extras(self, **extras) -> dict:
+        document = copy.deepcopy(self.base)
+        document["patterns"]["lead_line"].update(extras)
+        return document
+
+    def test_schema_declares_optional_pattern_arrays(self):
+        pattern = self.schema["properties"]["patterns"]["additionalProperties"]
+        properties = pattern["properties"]
+        self.assertEqual(properties["effects"]["type"], "array")
+        self.assertEqual(properties["commands"]["type"], "array")
+        self.assertNotIn("effects", pattern["required"])
+        self.assertNotIn("commands", pattern["required"])
+
+    def test_accepts_effect_and_command(self):
+        document = self._with_extras(
+            effects=[{"at": 0, "type": "arpeggio", "offsets": [4, 7], "period": 2}],
+            commands=[{"at": 0, "type": "set_tempo", "value": 50}],
+        )
+        self.assertEqual(validate(document, self.schema, self.schema), [])
+
+    def test_accepts_every_effect_shape(self):
+        effects = [
+            {"at": 0, "type": "arpeggio", "offsets": [4], "period": 2, "repeat": True},
+            {"at": 0, "type": "note_cut", "period": 2, "until": 8},
+            {"at": 0, "type": "lfo", "mode": "tremolo", "depth": 20, "period": 4},
+            {"at": 0, "type": "slide", "param": "volume", "amount": -2, "every": 4},
+            {"at": 0, "type": "glissando", "period": 2, "direction": "up"},
+            {"at": 0, "type": "noise_retrig", "period": 1, "note": "A2"},
+        ]
+        document = self._with_extras(effects=effects)
+        self.assertEqual(validate(document, self.schema, self.schema), [])
+
+    def test_accepts_every_command_shape(self):
+        commands = [
+            {"at": 0, "type": "set_tempo", "value": 50},
+            {"at": 1, "type": "add_tempo", "value": -4},
+            {"at": 2, "type": "set_transposition", "value": -12},
+            {"at": 3, "type": "add_transposition", "value": 12},
+            {"at": 4, "type": "set_volume", "value": 100},
+            {"at": 5, "type": "set_mod", "value": 64},
+            {"at": 6, "type": "cue", "value": 7},
+        ]
+        document = self._with_extras(commands=commands)
+        self.assertEqual(validate(document, self.schema, self.schema), [])
+
+    def test_accepts_empty_arrays(self):
+        document = self._with_extras(effects=[], commands=[])
+        self.assertEqual(validate(document, self.schema, self.schema), [])
+
+    def test_rejects_unknown_effect_type(self):
+        document = self._with_extras(effects=[{"at": 0, "type": "reverb"}])
+        self.assertTrue(validate(document, self.schema, self.schema))
+
+    def test_rejects_unknown_command_type(self):
+        document = self._with_extras(commands=[{"at": 0, "type": "set_pan", "value": 1}])
+        self.assertTrue(validate(document, self.schema, self.schema))
+
+    def test_rejects_wrong_typed_effect_field(self):
+        document = self._with_extras(
+            effects=[{"at": 0, "type": "glissando", "period": "2", "direction": "up"}]
+        )
+        self.assertTrue(validate(document, self.schema, self.schema))
+
+    def test_rejects_unknown_effect_field(self):
+        document = self._with_extras(
+            effects=[{"at": 0, "type": "note_cut", "period": 2, "speed": 1}]
+        )
+        self.assertTrue(validate(document, self.schema, self.schema))
+
+    def test_rejects_effect_missing_required_field(self):
+        document = self._with_extras(effects=[{"at": 0, "type": "lfo", "mode": "tremolo"}])
+        self.assertTrue(validate(document, self.schema, self.schema))
+
+
 class DemoScoreStructuralTests(unittest.TestCase):
     """Every shipped demo score must satisfy the public structural schema."""
 

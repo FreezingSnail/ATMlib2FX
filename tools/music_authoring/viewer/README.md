@@ -176,15 +176,14 @@ mismatched preview is rejected (warning diagnostic, no embedded audio) instead
 of letting a previous revision play. Report paths are resolved and bounded to the
 requested preview directory; escaping references are refused.
 
-## Capability-report mismatch (documented, not changed)
+## Capability report
 
-`capabilities --json` still reports `inspect`/`render` unavailable: the
-ATMlib2FX-3ii.1 `expected/review.json` golden embeds that capabilities block and
-`test_progmem` pins it. Changing it would require regenerating that frozen golden,
-which is out of scope here. Instead `inspect` (and `render`) report their own
-truthful availability in their own payloads and in the embedded document's
-`capabilities`. `test_inspect.CapabilityDivergenceTests` pins this deliberate
-divergence.
+`capabilities --json` advertises `inspect`, `render` and `wav_preview` as
+available, matching the working commands. The ATMlib2FX-3ii.1
+`expected/review.json` golden keeps its byte-stable embedded capabilities block
+unchanged. `inspect` (and `render`) also report their own truthful availability
+in their own payloads and in the embedded document's `capabilities`.
+`test_inspect.CapabilityReportTests` pins the live summary against the golden.
 
 ## Recorded browser walkthrough
 

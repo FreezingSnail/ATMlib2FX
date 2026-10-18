@@ -91,7 +91,7 @@ Relevant `capabilities --json` facts:
 | `engine` | `ATMlib` 1.2.4, channels `pulse0`,`pulse1`,`pulse2`,`noise`, tick base 2000 Hz |
 | `pitch_range` | `C2`..`D7` (note indices 1..63) |
 | `backends` | `progmem` available; `fx` **unavailable** (pending ATMlib2FX-hlh.2 architecture decision) |
-| host limits | 64 instruments, 256 patterns, 4096 source events, 65536 expanded notes, 1048576 ticks |
+| host limits | 64 instruments, 256 patterns, 4096 source events, 4096 source effects, 4096 source commands, 65536 expanded notes, 1048576 ticks |
 | `canonicalization` | `atmlib-canonical-events-v1` |
 
 Exit codes everywhere: `0` success, `2` invalid score / unsupported capability,
@@ -122,8 +122,9 @@ Exit codes everywhere: `0` success, `2` invalid score / unsupported capability,
   pattern repetition is bounded (1–256) and expanded on the host. Add root
   `"loop": true` to repeat the entire song on the original PROGMEM engine.
   Shorter tracks wait silently for the longest track before restarting together.
-  Omit it or use false for a finite cue. Tempo changes and live effects remain
-  outside v1.
+  Omit it or use false for a finite cue. Tempo changes and live engine effects
+  are available through the additive per-pattern `effects` and `commands` keys
+  described in section 3.
 
 The offline review's **Loop** checkbox repeats one complete musical cycle and
 defaults on for looping scores. Playback removes measured AVR startup and the
@@ -171,6 +172,60 @@ Rules that matter in practice: pattern `ticks` is a positive integer; an event's
 timestamp in a pattern; at least one track; missing channels are silent. IDs and
 references are case sensitive.
 
+### Live effects and commands (additive v1)
+
+Two **optional** pattern keys add engine effects and instantaneous commands.
+They are absent from every earlier score, so old files validate and serialize
+unchanged. A pattern is monophonic, so its effects act on that pattern's single
+voice.
+
+```json
+{
+  "patterns": {
+    "arp_lead": {
+      "ticks": 32,
+      "events": [{"at": 0, "note": "C4", "duration": 16, "instrument": "lead"}],
+      "effects": [
+        {"at": 0, "type": "arpeggio", "offsets": [4, 7], "period": 2},
+        {"at": 16, "type": "lfo", "mode": "tremolo", "depth": 24, "period": 8}
+      ],
+      "commands": [{"at": 0, "type": "set_tempo", "value": 50}]
+    }
+  }
+}
+```
+
+Each effect window has `at` (start tick), `type`, an optional exclusive `until`
+(default the pattern end; it must not cross the boundary), and the type's
+operands. Kinds and the exact engine byte mapping are in
+[`music-authoring-interface.md`](music-authoring-interface.md#effect-windows-and-live-commands);
+in brief:
+
+| Type | Operands | Effect |
+| --- | --- | --- |
+| `arpeggio` | `offsets` (1–2 values 0–14, absolute semitone intervals from the base note), `period` 1–32 ticks, optional `repeat` (default true) | cycles base → base+offsets[0] → base+offsets[1] every `period` ticks |
+| `note_cut` | `period` 1–32 ticks, optional `repeat` | cuts the note after `period` ticks; `repeat` re-attacks it |
+| `lfo` | `mode` `tremolo`/`vibrato`/`modulation`, `depth` 0–255, `period` even 2–64 | volume / `freq` / `mod` modulation |
+| `slide` | `param` `volume`/`frequency`/`modulation`, `amount` -128..127, `every` 1–64 ticks | steps the parameter every `every` ticks |
+| `glissando` | `period` 1–128, `direction` `up`/`down` | steps the note ±1 semitone every `period` ticks |
+| `noise_retrig` | `period` 0–3, `note` (noise channel only) | retriggers noise every `period+1` ticks |
+
+The engine has one slot each for arpeggio/note-cut (they share state), slide,
+LFO, glissando and noise retrigger; windows in a slot must be ordered and
+non-overlapping and the whole `effects` array sorted by `at`. `noise_retrig`
+belongs only to a pattern whose events are noise; the other kinds only to pulse
+patterns. `commands` are instantaneous and at most one per `(type, at)` with
+`at` in `[0, ticks)`: `set_tempo`/`add_tempo`, `set_transposition`/
+`add_transposition`, `set_volume`, `set_mod`, `cue`. Rejections use stable codes
+and JSON Pointers: `UNKNOWN_EFFECT_TYPE`, `EFFECT_BOUNDS`, `EFFECT_ORDER`,
+`EFFECT_OVERLAP`, `EFFECT_CHANNEL_MISMATCH`, `UNKNOWN_COMMAND_TYPE`,
+`COMMAND_BOUNDS`, `COMMAND_ORDER`, `COMMAND_DUPLICATE`.
+
+> These keys are validated by the CLI today. Emitting the engine command bytes
+> (PROGMEM), capability reporting and viewer display are delivered by
+> `ATMlib2FX-3ii.14.*`; do not assume an effect is audible in a build until that
+> backend work lands.
+
 ### From a natural-language brief to concrete fields
 
 A brief is a composition goal, not engine syntax. Map it like this:
@@ -196,16 +251,18 @@ encoding; the local source remains authoritative.
 | Musical technique | What works here |
 | --- | --- |
 | Sustained melody instead of stuttering | Set longer `duration` gates. Join an accidental same-pitch repetition into one event spanning the combined time. Every source event otherwise explicitly mutes at its gate end. |
-| Arpeggiated harmony | Write sequential chord tones on a pulse track. The engine also has a hardware-playback arpeggio effect, but v1 JSON does not expose it. Its parameter semantics must be checked locally. |
+| Arpeggiated harmony | Write sequential chord tones on a pulse track, or a hardware arpeggio via the pattern `effects` key: `{"at":0,"type":"arpeggio","offsets":[4,7],"period":2}` cycles the base through `+4` (third) then `+7` (fifth). Offsets are absolute semitone intervals from the base note. |
 | Gentle articulation and balance | Keep the lead stronger than its supporting voices; use restrained noise and intentional rests. Pulse `duty` changes the tone, not the pitch. These are composition decisions, checked with the matching render. |
-| Slides, vibrato and tremolo | Present in the engine; unavailable in the current JSON subset. Do not insert foreign opcode bytes into JSON or assume effects can be combined freely. |
+| Slides, vibrato and tremolo | Available as pattern `effects`: `slide` (volume/frequency/modulation, plain or stepped), `lfo` (`tremolo`/`vibrato`/`modulation`), and `glissando`. One slot each, so they cannot be freely combined on one channel; do not insert foreign opcode bytes into JSON. |
 | Whole-song looping | Use root `"loop": true`. The compiler emits local `SET_LOOP_PATTERN` commands and synchronizes channel restart. |
-| Tempo | Count event times in ticks using the local timer rate; old default/range recommendations are not the host clock contract. |
+| Tempo | Count event times in ticks using the local timer rate; old default/range recommendations are not the host clock contract. In-song changes use the `set_tempo`/`add_tempo` commands. |
 
 For exact behavior, see `src/atm_cmd_constants.h`, `src/cmd_parse.c` and
 `src/atm_synth.c`. For example, the local arpeggio processor adds each stored
-interval to the base note, rather than chaining the second interval from the
-previous arpeggio note. Local pitch indices start at C2; importing old numeric
+nibble to the base note rather than chaining them, so the lowering stores the
+second offset directly in the low nibble; see
+[`music-authoring-interface.md`](music-authoring-interface.md#effect-windows-and-live-commands).
+Local pitch indices start at C2; importing old numeric
 note values would change the music. Old combined-volume limits also require
 checking against this port's mixer; they are not a replacement for local renders.
 

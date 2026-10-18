@@ -8,9 +8,13 @@ from typing import Any
 from .score import (
     CHANNEL_NAMES,
     CHANNEL_VOICE,
+    COMMAND_TYPES,
+    EFFECT_SLOT,
+    EFFECT_TYPES,
     HOST_LIMITS,
     IDENTIFIER_MAX_LENGTH,
     IDENTIFIER_RE,
+    NOISE_EFFECT_TYPES,
     NOTE_MAX_INDEX,
     NOTE_MIN_INDEX,
     PITCH_MAX,
@@ -19,8 +23,10 @@ from .score import (
     SCHEMA_VERSION,
     Clock,
     Diagnostic,
+    EffectWindow,
     Instrument,
     InvalidJson,
+    LiveCommand,
     NoteEvent,
     ParsedJson,
     Pattern,
@@ -38,8 +44,45 @@ TOP_LEVEL_FIELDS = ("format", "version", "id", "clock", "instruments", "patterns
 CLOCK_FIELDS = ("tick_rate", "ticks_per_beat", "beats_per_bar")
 INSTRUMENT_FIELDS = ("voice", "volume", "duty")
 PATTERN_FIELDS = ("ticks", "events")
+PATTERN_OPTIONAL_FIELDS = ("effects", "commands")
 EVENT_FIELDS = ("at", "note", "duration", "instrument")
 TRACK_USE_FIELDS = ("pattern", "repeat")
+
+# Effect windows: common keys plus per-kind keys. `until` and `repeat` are
+# optional everywhere; every other per-kind key is required.
+EFFECT_COMMON_FIELDS = ("at", "type", "until")
+EFFECT_KIND_FIELDS = {
+    "arpeggio": ("offsets", "period", "repeat"),
+    "note_cut": ("period", "repeat"),
+    "lfo": ("mode", "depth", "period"),
+    "slide": ("param", "amount", "every"),
+    "glissando": ("period", "direction"),
+    "noise_retrig": ("period", "note"),
+}
+EFFECT_KIND_REQUIRED = {
+    "arpeggio": ("offsets", "period"),
+    "note_cut": ("period",),
+    "lfo": ("mode", "depth", "period"),
+    "slide": ("param", "amount", "every"),
+    "glissando": ("period", "direction"),
+    "noise_retrig": ("period", "note"),
+}
+LFO_MODES = ("tremolo", "vibrato", "modulation")
+SLIDE_PARAMS = ("volume", "frequency", "modulation")
+GLISSANDO_DIRECTIONS = ("up", "down")
+
+COMMAND_FIELDS = ("at", "type", "value")
+# Accumulator ranges from src/cmd_parse.c / src/cmd_synth.h; see the interface
+# doc for the engine operand widths behind each bound.
+COMMAND_VALUE_RANGES = {
+    "set_tempo": (8, 255),
+    "add_tempo": (-128, 127),
+    "set_transposition": (-128, 127),
+    "add_transposition": (-128, 127),
+    "set_volume": (0, 255),
+    "set_mod": (0, 255),
+    "cue": (0, 255),
+}
 
 
 class _Sink:
@@ -405,6 +448,8 @@ def _validate_patterns(
         return patterns, pattern_voices
 
     source_events = 0
+    source_effects = 0
+    source_commands = 0
     for pattern_name, body in value.items():
         pattern_path = pointer("patterns", pattern_name)
         if not _check_identifier(pattern_name, path=pattern_path, label="pattern name", sink=sink):
@@ -421,7 +466,7 @@ def _validate_patterns(
         _check_keys(
             body,
             path=pattern_path,
-            allowed=PATTERN_FIELDS,
+            allowed=PATTERN_FIELDS + PATTERN_OPTIONAL_FIELDS,
             required=PATTERN_FIELDS,
             sink=sink,
         )
@@ -614,15 +659,634 @@ def _validate_patterns(
                     )
                     break
 
-        if valid_events:
+        # A pattern is monophonic, so its events define the single channel voice
+        # that plays any effect window it declares.
+        pattern_voice = next(iter(voices)) if len(voices) == 1 else None
+        effects: tuple[EffectWindow, ...] = ()
+        commands: tuple[LiveCommand, ...] = ()
+        effects_ok = True
+        commands_ok = True
+
+        if "effects" in body:
+            effects_value = body["effects"]
+            source_effects += len(effects_value) if isinstance(effects_value, list) else 1
+            if source_effects > HOST_LIMITS["source_effects"]:
+                sink.error(
+                    "LIMIT_EXCEEDED",
+                    pointer(pattern_path, "effects"),
+                    f"More than {HOST_LIMITS['source_effects']} source effect windows.",
+                    "Remove effect windows or split the score.",
+                )
+                effects_ok = False
+            else:
+                effects, effects_ok = _validate_effects(
+                    effects_value,
+                    pattern_path=pattern_path,
+                    ticks=body.get("ticks"),
+                    ticks_ok=ticks_ok,
+                    voice=pattern_voice,
+                    sink=sink,
+                )
+
+        if "commands" in body:
+            commands_value = body["commands"]
+            source_commands += len(commands_value) if isinstance(commands_value, list) else 1
+            if source_commands > HOST_LIMITS["source_commands"]:
+                sink.error(
+                    "LIMIT_EXCEEDED",
+                    pointer(pattern_path, "commands"),
+                    f"More than {HOST_LIMITS['source_commands']} source live commands.",
+                    "Remove commands or split the score.",
+                )
+                commands_ok = False
+            else:
+                commands, commands_ok = _validate_commands(
+                    commands_value,
+                    pattern_path=pattern_path,
+                    ticks=body.get("ticks"),
+                    ticks_ok=ticks_ok,
+                    sink=sink,
+                )
+
+        if valid_events and effects_ok and commands_ok:
             patterns[pattern_name] = Pattern(
                 name=pattern_name,
                 ticks=body["ticks"],
                 events=tuple(events),
+                effects=effects,
+                commands=commands,
             )
             pattern_voices[pattern_name] = frozenset(voices)
 
     return patterns, pattern_voices
+
+
+def _check_bool(value: Any, *, path: str, label: str, sink: _Sink) -> bool:
+    if not isinstance(value, bool):
+        sink.error(
+            "TYPE_MISMATCH",
+            path,
+            f"{label} must be a boolean.",
+            "Use true or false.",
+        )
+        return False
+    return True
+
+
+def _check_choice(value: Any, *, path: str, label: str, choices: tuple[str, ...], sink: _Sink) -> bool:
+    if not isinstance(value, str):
+        sink.error(
+            "TYPE_MISMATCH",
+            path,
+            f"{label} must be a string.",
+            f"Use one of {', '.join(choices)}.",
+        )
+        return False
+    if value not in choices:
+        sink.error(
+            "VALUE_RANGE",
+            path,
+            f"Unsupported {label} {value!r}.",
+            f"Use one of {', '.join(choices)}.",
+        )
+        return False
+    return True
+
+
+def _check_note_token(value: Any, *, path: str, label: str, sink: _Sink) -> tuple[bool, str | None, int | None]:
+    if not isinstance(value, str):
+        sink.error(
+            "TYPE_MISMATCH",
+            path,
+            f"{label} must be a string.",
+            f"Use a pitch token such as {PITCH_MIN}..{PITCH_MAX}.",
+        )
+        return False, None, None
+    problem, note_value = note_range_problem(value)
+    if problem == "INVALID_NOTE":
+        sink.error(
+            "INVALID_NOTE",
+            path,
+            f"{value!r} is not a v1 note token.",
+            f"Use a natural or sharp pitch from {PITCH_MIN} to {PITCH_MAX}.",
+        )
+        return False, None, None
+    if problem == "PITCH_RANGE":
+        sink.error(
+            "PITCH_RANGE",
+            path,
+            f"{value} is outside the engine pitch range {PITCH_MIN}..{PITCH_MAX}.",
+            f"Choose a pitch between {PITCH_MIN} and {PITCH_MAX}.",
+        )
+        return False, None, None
+    return True, value, note_value
+
+
+def _validate_effect_params(kind: str, item: dict, *, path: str, sink: _Sink) -> tuple[bool, dict]:
+    """Validate the kind-specific operands and return ``(ok, params)``."""
+    ok = True
+    params: dict[str, Any] = {}
+
+    if kind == "arpeggio":
+        offsets = item.get("offsets")
+        offsets_ok = True
+        values: list[int] = []
+        if not isinstance(offsets, list):
+            sink.error(
+                "TYPE_MISMATCH",
+                pointer(path, "offsets"),
+                "arpeggio offsets must be an array.",
+                "Use [a] for a two-step cycle or [a, b] for a three-step cycle.",
+            )
+            offsets_ok = False
+        elif len(offsets) not in (1, 2):
+            sink.error(
+                "VALUE_RANGE",
+                pointer(path, "offsets"),
+                f"arpeggio offsets has {len(offsets)} entries; expected 1 or 2.",
+                "Use [a] (two-step) or [a, b] (three-step).",
+            )
+            offsets_ok = False
+        else:
+            for i, entry in enumerate(offsets):
+                if not _is_int(entry):
+                    sink.error(
+                        "TYPE_MISMATCH",
+                        pointer(path, "offsets", i),
+                        "arpeggio offset must be an integer.",
+                        "Use an integer in 0..14.",
+                    )
+                    offsets_ok = False
+                elif entry < 0 or entry > 14:
+                    sink.error(
+                        "VALUE_RANGE",
+                        pointer(path, "offsets", i),
+                        f"arpeggio offset {entry} is outside 0..14.",
+                        "Use 0..14; 15 is the engine's note-off nibble (use note_cut instead).",
+                    )
+                    offsets_ok = False
+                else:
+                    values.append(entry)
+            period_ok = _check_int_range(
+            item.get("period"),
+            path=pointer(path, "period"),
+            minimum=1,
+            maximum=32,
+            label="arpeggio period",
+            sink=sink,
+        )
+        repeat = True
+        repeat_ok = True
+        if "repeat" in item:
+            repeat_ok = _check_bool(item.get("repeat"), path=pointer(path, "repeat"), label="arpeggio repeat", sink=sink)
+        if repeat_ok and "repeat" in item:
+            repeat = item["repeat"]
+        ok = offsets_ok and period_ok and repeat_ok
+        if ok:
+            params.update(offsets=tuple(values), period=item["period"], repeat=repeat)
+
+    elif kind == "note_cut":
+        period_ok = _check_int_range(
+            item.get("period"),
+            path=pointer(path, "period"),
+            minimum=1,
+            maximum=32,
+            label="note_cut period",
+            sink=sink,
+        )
+        repeat = True
+        repeat_ok = True
+        if "repeat" in item:
+            repeat_ok = _check_bool(item.get("repeat"), path=pointer(path, "repeat"), label="note_cut repeat", sink=sink)
+        if repeat_ok and "repeat" in item:
+            repeat = item["repeat"]
+        ok = period_ok and repeat_ok
+        if ok:
+            params.update(period=item["period"], repeat=repeat)
+
+    elif kind == "lfo":
+        mode_ok = _check_choice(
+            item.get("mode"),
+            path=pointer(path, "mode"),
+            label="lfo mode",
+            choices=LFO_MODES,
+            sink=sink,
+        )
+        depth_ok = _check_int_range(
+            item.get("depth"),
+            path=pointer(path, "depth"),
+            minimum=0,
+            maximum=255,
+            label="lfo depth",
+            sink=sink,
+        )
+        period_ok = _check_int_range(
+            item.get("period"),
+            path=pointer(path, "period"),
+            minimum=2,
+            maximum=64,
+            label="lfo period",
+            sink=sink,
+        )
+        if period_ok and item["period"] % 2 != 0:
+            sink.error(
+                "VALUE_RANGE",
+                pointer(path, "period"),
+                f"lfo period {item['period']} is not even; the engine stores a half period of 1..32 ticks.",
+                "Use an even full period from 2 to 64.",
+            )
+            period_ok = False
+        ok = mode_ok and depth_ok and period_ok
+        if ok:
+            params.update(mode=item["mode"], depth=item["depth"], period=item["period"])
+
+    elif kind == "slide":
+        param_ok = _check_choice(
+            item.get("param"),
+            path=pointer(path, "param"),
+            label="slide param",
+            choices=SLIDE_PARAMS,
+            sink=sink,
+        )
+        amount_ok = _check_int_range(
+            item.get("amount"),
+            path=pointer(path, "amount"),
+            minimum=-128,
+            maximum=127,
+            label="slide amount",
+            sink=sink,
+        )
+        every_ok = _check_int_range(
+            item.get("every"),
+            path=pointer(path, "every"),
+            minimum=1,
+            maximum=64,
+            label="slide every",
+            sink=sink,
+        )
+        ok = param_ok and amount_ok and every_ok
+        if ok:
+            params.update(param=item["param"], amount=item["amount"], every=item["every"])
+
+    elif kind == "glissando":
+        period_ok = _check_int_range(
+            item.get("period"),
+            path=pointer(path, "period"),
+            minimum=1,
+            maximum=128,
+            label="glissando period",
+            sink=sink,
+        )
+        direction_ok = _check_choice(
+            item.get("direction"),
+            path=pointer(path, "direction"),
+            label="glissando direction",
+            choices=GLISSANDO_DIRECTIONS,
+            sink=sink,
+        )
+        ok = period_ok and direction_ok
+        if ok:
+            params.update(period=item["period"], direction=item["direction"])
+
+    elif kind == "noise_retrig":
+        period_ok = _check_int_range(
+            item.get("period"),
+            path=pointer(path, "period"),
+            minimum=0,
+            maximum=3,
+            label="noise_retrig period",
+            sink=sink,
+        )
+        note_ok, note, note_index = _check_note_token(
+            item.get("note"),
+            path=pointer(path, "note"),
+            label="noise_retrig note",
+            sink=sink,
+        )
+        ok = period_ok and note_ok
+        if ok:
+            params.update(period=item["period"], note=note, note_index=note_index)
+
+    return ok, params
+
+
+def _validate_effects(
+    value: Any,
+    *,
+    pattern_path: str,
+    ticks: Any,
+    ticks_ok: bool,
+    voice: str | None,
+    sink: _Sink,
+) -> tuple[tuple[EffectWindow, ...], bool]:
+    effects_path = pointer(pattern_path, "effects")
+    if not isinstance(value, list):
+        sink.error(
+            "TYPE_MISMATCH",
+            effects_path,
+            "effects must be an array.",
+            "Use an ordered array of effect windows (an empty array is allowed).",
+        )
+        return (), False
+
+    ticks_valid = _is_int(ticks) and ticks_ok
+    windows: list[EffectWindow] = []
+    valid = True
+    previous_at: int | None = None
+    slot_ends: dict[str, int] = {}
+
+    for index, item in enumerate(value):
+        item_path = pointer(effects_path, index)
+        if not isinstance(item, dict):
+            sink.error(
+                "TYPE_MISMATCH",
+                item_path,
+                "Effect window must be an object.",
+                "Provide at, type and the type's parameters.",
+            )
+            valid = False
+            continue
+
+        kind = item.get("type")
+        if "type" not in item:
+            sink.error(
+                "MISSING_FIELD",
+                pointer(item_path, "type"),
+                "Required field 'type' is missing.",
+                f"Add 'type' naming one of {', '.join(EFFECT_TYPES)}.",
+            )
+            valid = False
+            continue
+        if not isinstance(kind, str):
+            sink.error(
+                "TYPE_MISMATCH",
+                pointer(item_path, "type"),
+                "Effect type must be a string.",
+                f"Use one of {', '.join(EFFECT_TYPES)}.",
+            )
+            valid = False
+            continue
+        if kind not in EFFECT_TYPES:
+            sink.error(
+                "UNKNOWN_EFFECT_TYPE",
+                pointer(item_path, "type"),
+                f"Unsupported effect type {kind!r}.",
+                f"Use one of {', '.join(EFFECT_TYPES)}.",
+            )
+            valid = False
+            continue
+
+        _check_keys(
+            item,
+            path=item_path,
+            allowed=EFFECT_COMMON_FIELDS + EFFECT_KIND_FIELDS[kind],
+            required=("at", "type") + EFFECT_KIND_REQUIRED[kind],
+            sink=sink,
+        )
+
+        at_ok = _check_int_range(
+            item.get("at"),
+            path=pointer(item_path, "at"),
+            minimum=0,
+            maximum=HOST_LIMITS["total_ticks"],
+            label=f"{kind} effect at",
+            sink=sink,
+        )
+        at_value = item["at"] if at_ok else None
+
+        until_value: int | None = ticks if ticks_valid else None
+        until_ok = True
+        if "until" in item:
+            until_ok = _check_int_range(
+                item.get("until"),
+                path=pointer(item_path, "until"),
+                minimum=1,
+                maximum=HOST_LIMITS["total_ticks"],
+                label=f"{kind} effect until",
+                sink=sink,
+            )
+            until_value = item["until"] if until_ok else None
+
+        if at_ok and ticks_valid and at_value is not None and at_value >= ticks:
+            sink.error(
+                "EFFECT_BOUNDS",
+                pointer(item_path, "at"),
+                f"{kind} effect starts at {at_value}, outside pattern ticks={ticks}.",
+                "Start the effect inside [0, ticks) or increase pattern ticks.",
+            )
+            at_ok = False
+
+        if until_ok:
+            if until_value is not None and at_value is not None and until_value <= at_value:
+                sink.error(
+                    "EFFECT_BOUNDS",
+                    pointer(item_path, "until"),
+                    f"{kind} effect ends at {until_value}, not after at={at_value}.",
+                    "Set until greater than at (until is the exclusive end tick).",
+                )
+                until_ok = False
+            elif until_value is not None and ticks_valid and until_value > ticks:
+                sink.error(
+                    "EFFECT_BOUNDS",
+                    pointer(item_path, "until"),
+                    f"{kind} effect ends at {until_value}, past pattern ticks={ticks}.",
+                    "End the effect at or before the pattern boundary.",
+                )
+                until_ok = False
+
+        params_ok, params = _validate_effect_params(kind, item, path=item_path, sink=sink)
+
+        channel_ok = True
+        if voice is not None:
+            expected = "noise" if kind in NOISE_EFFECT_TYPES else "pulse"
+            if voice != expected:
+                sink.error(
+                    "EFFECT_CHANNEL_MISMATCH",
+                    pointer(item_path, "type"),
+                    f"{kind} is a {expected}-channel effect but the pattern's instruments are {voice}.",
+                    (
+                        "Use noise_retrig only in a pattern whose events are noise instruments."
+                        if expected == "noise"
+                        else f"Use {kind} only in a pattern whose events are pulse instruments."
+                    ),
+                )
+                channel_ok = False
+
+        if at_value is not None:
+            if previous_at is not None and at_value < previous_at:
+                sink.error(
+                    "EFFECT_ORDER",
+                    pointer(item_path, "at"),
+                    f"Effect at {at_value} is not after the previous effect at {previous_at}.",
+                    "Sort effects by ascending at; equal at is allowed for different slots.",
+                )
+                valid = False
+            else:
+                slot = EFFECT_SLOT[kind]
+                last_end = slot_ends.get(slot)
+                if last_end is not None and at_value < last_end:
+                    sink.error(
+                        "EFFECT_OVERLAP",
+                        item_path,
+                        f"{kind} starts at {at_value}, before the previous {slot} window ends at {last_end}.",
+                        "Shorten the previous window or move this one; a slot is monophonic.",
+                    )
+                    valid = False
+                elif until_value is not None and until_ok:
+                    slot_ends[slot] = until_value
+            previous_at = at_value
+
+        if at_ok and until_ok and params_ok and channel_ok:
+            windows.append(
+                EffectWindow(
+                    index=index,
+                    kind=kind,
+                    at=item["at"],
+                    until=until_value if until_value is not None else item["at"] + 1,
+                    **params,
+                )
+            )
+        else:
+            valid = False
+
+    return tuple(windows), valid
+
+
+def _validate_commands(
+    value: Any,
+    *,
+    pattern_path: str,
+    ticks: Any,
+    ticks_ok: bool,
+    sink: _Sink,
+) -> tuple[tuple[LiveCommand, ...], bool]:
+    commands_path = pointer(pattern_path, "commands")
+    if not isinstance(value, list):
+        sink.error(
+            "TYPE_MISMATCH",
+            commands_path,
+            "commands must be an array.",
+            "Use an ordered array of live commands (an empty array is allowed).",
+        )
+        return (), False
+
+    ticks_valid = _is_int(ticks) and ticks_ok
+    commands: list[LiveCommand] = []
+    valid = True
+    previous_at: int | None = None
+    seen: set[tuple[str, int]] = set()
+
+    for index, item in enumerate(value):
+        item_path = pointer(commands_path, index)
+        if not isinstance(item, dict):
+            sink.error(
+                "TYPE_MISMATCH",
+                item_path,
+                "Live command must be an object.",
+                "Provide at, type and value.",
+            )
+            valid = False
+            continue
+
+        kind = item.get("type")
+        if "type" not in item:
+            sink.error(
+                "MISSING_FIELD",
+                pointer(item_path, "type"),
+                "Required field 'type' is missing.",
+                f"Add 'type' naming one of {', '.join(COMMAND_TYPES)}.",
+            )
+            valid = False
+            continue
+        if not isinstance(kind, str):
+            sink.error(
+                "TYPE_MISMATCH",
+                pointer(item_path, "type"),
+                "Command type must be a string.",
+                f"Use one of {', '.join(COMMAND_TYPES)}.",
+            )
+            valid = False
+            continue
+        if kind not in COMMAND_TYPES:
+            sink.error(
+                "UNKNOWN_COMMAND_TYPE",
+                pointer(item_path, "type"),
+                f"Unsupported command type {kind!r}.",
+                f"Use one of {', '.join(COMMAND_TYPES)}.",
+            )
+            valid = False
+            continue
+
+        _check_keys(
+            item,
+            path=item_path,
+            allowed=COMMAND_FIELDS,
+            required=COMMAND_FIELDS,
+            sink=sink,
+        )
+
+        at_ok = _check_int_range(
+            item.get("at"),
+            path=pointer(item_path, "at"),
+            minimum=0,
+            maximum=HOST_LIMITS["total_ticks"],
+            label=f"{kind} at",
+            sink=sink,
+        )
+        minimum, maximum = COMMAND_VALUE_RANGES[kind]
+        value_ok = _check_int_range(
+            item.get("value"),
+            path=pointer(item_path, "value"),
+            minimum=minimum,
+            maximum=maximum,
+            label=f"{kind} value",
+            sink=sink,
+        )
+
+        if at_ok and ticks_valid and item["at"] >= ticks:
+            sink.error(
+                "COMMAND_BOUNDS",
+                pointer(item_path, "at"),
+                f"{kind} at {item['at']} is outside pattern ticks={ticks}.",
+                "Place the command inside [0, ticks).",
+            )
+            at_ok = False
+
+        if at_ok:
+            at = item["at"]
+            key = (kind, at)
+            if key in seen:
+                sink.error(
+                    "COMMAND_DUPLICATE",
+                    pointer(item_path, "at"),
+                    f"Duplicate {kind} command at {at}.",
+                    "One command per (type, at); remove the duplicate.",
+                )
+                valid = False
+            if previous_at is not None and at < previous_at:
+                sink.error(
+                    "COMMAND_ORDER",
+                    pointer(item_path, "at"),
+                    f"Command at {at} is not after the previous command at {previous_at}.",
+                    "Sort commands by ascending at; equal at is allowed for different types.",
+                )
+                valid = False
+            seen.add(key)
+            previous_at = at
+
+        if at_ok and value_ok:
+            commands.append(
+                LiveCommand(
+                    index=index,
+                    kind=kind,
+                    at=item["at"],
+                    value=item["value"],
+                )
+            )
+        else:
+            valid = False
+
+    return tuple(commands), valid
 
 
 def _validate_tracks(

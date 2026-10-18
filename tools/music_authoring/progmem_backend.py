@@ -404,7 +404,14 @@ def capability_summary() -> dict:
         },
         "host_limits": dict(HOST_LIMITS),
         "backends": backends,
-        "capabilities": available["capabilities"],
+        "capabilities": {
+            # These commands are implemented and reachable from the CLI
+            # (cli.py: cmd_inspect / cmd_render). Report the real availability
+            # instead of the 3ii.1-pinned "owned by" placeholders.
+            "inspect": {"available": True},
+            "render": {"available": True},
+            "wav_preview": {"available": True},
+        },
         "canonicalization": "atmlib-canonical-events-v1",
         "review_payload_version": 1,
     }

@@ -611,19 +611,20 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["diagnostics"][0]["code"], "AUDIO_PREVIEW_INVALID")
 
 
-class CapabilityDivergenceTests(unittest.TestCase):
-    """Documents the bounded capability-report mismatch and why it is not changed.
+class CapabilityReportTests(unittest.TestCase):
+    """The live capability report matches real command support.
 
-    ``capabilities --json`` still reports inspect/render unavailable because the
-    ATMlib2FX-3ii.1 ``review.json`` golden embeds that capabilities block (and
-    ``test_progmem`` pins it). Regenerating that golden is out of scope for 3ii.6,
-    so the divergence is deliberately preserved and reported here instead.
+    ``capabilities --json`` now advertises inspect/render/wav_preview as
+    available, matching the working commands. The embedded canonical review
+    payload keeps its byte-stable 3ii.1-pinned capabilities block; this class
+    pins that the golden is unchanged while the live summary is truthful.
     """
 
-    def test_capability_summary_keeps_the_pinned_payload(self):
+    def test_capability_summary_reports_real_availability(self):
         summary = capability_summary()
-        self.assertFalse(summary["capabilities"]["inspect"]["available"])
-        self.assertFalse(summary["capabilities"]["render"]["available"])
+        self.assertTrue(summary["capabilities"]["inspect"]["available"])
+        self.assertTrue(summary["capabilities"]["render"]["available"])
+        self.assertTrue(summary["capabilities"]["wav_preview"]["available"])
         with open(os.path.join(REPO_ROOT, REVIEW_REL), "r", encoding="utf-8") as handle:
             golden = json.load(handle)
         self.assertFalse(golden["capabilities"]["capabilities"]["inspect"]["available"])

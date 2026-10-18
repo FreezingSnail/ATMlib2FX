@@ -15,9 +15,9 @@ requested change.
   local command meanings, effects, playback and timer behavior.
 
 `tools/atm-music capabilities --json` reports the available backend and limits.
-Its pinned static report misleadingly lists render/inspect as unavailable;
-those commands work and report their own capabilities. FX export remains
-unavailable. Check actual command diagnostics before concluding a tool is absent.
+Its static report now marks `inspect`, `render` and `wav_preview` as available,
+matching the working commands. Check actual command diagnostics before
+concluding a tool is absent.
 
 One known discrepancy needs care until its fix lands:
 

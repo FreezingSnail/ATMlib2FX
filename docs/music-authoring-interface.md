@@ -53,13 +53,20 @@ Support notes, rests, pulse duty, fixed per-instrument volume, finite pattern
 reuse, and finite arrangements. Each physical channel is monophonic. An
 instrument is a host-side preset, not an additional hardware voice.
 
-Defer live effects, tempo changes and FX SFX to explicit
-capability extensions. Reject an unsupported request with a diagnostic. Finite
+The base subset above stays conservative; FX SFX and any capability not listed
+in this document are deferred to explicit capability extensions and rejected
+with a diagnostic. Finite
 arrangement repetition is permitted because the compiler can expand it within
 declared host limits. The optional root `"loop": true` repeats the entire
 arrangement through the original PROGMEM engine's `SET_LOOP_PATTERN` command.
 Omitting it (or setting false) retains finite playback and existing byte goldens.
 This is a PROGMEM capability; no FX loop contract is selected here.
+
+Effect windows and instantaneous live commands are exposed as *additive,
+optional* v1 pattern keys (see “Effect windows and live commands” below). Both
+are absent from every existing score, so documents and byte goldens written
+before this extension validate and serialize unchanged. FX SFX remains a
+separate capability extension.
 
 ### Proposed JSON
 
@@ -148,14 +155,134 @@ contract illustration, not a claimed playable artifact.
   every tick; host lowering may remove redundant writes only after equivalence
   evidence shows that the removal preserves state and audible output.
 
-Host admission limits for v1 are proposed as: 64 instruments, 256 patterns,
-4096 source events, 4096 expanded pattern uses, 65536 expanded note events,
+Host admission limits for v1 are: 64 instruments, 256 patterns,
+4096 source events, 4096 source effect windows, 4096 source live commands,
+4096 expanded pattern uses, 65536 expanded note events,
 and 1048576 total song ticks. All arithmetic is checked before allocation or
 expansion. Cap rendered output separately at 60 seconds by default and 300
 seconds maximum; render truncation must be reported. These are host safeguards,
 not decoder guarantees. Each backend must apply its own stricter limits on
 offset widths, asset extents, due groups and supported features. Do not expose
 raw bytes or arbitrary embedded code as a way around validation.
+
+## Effect windows and live commands
+
+These are **additive optional keys on a pattern object**; `format` stays
+`atmlib-score` and `version` stays `1`. A document that omits both keys is byte-
+and behavior-identical to the pre-extension v1 subset. The semantic rules and
+diagnostics are enforced by `tools/music_authoring/validate.py`; the JSON Schema
+in `schemas/atmlib-score-v1.schema.json` fixes only the structural shape.
+
+### Pattern effects
+
+`patterns.<name>.effects` is an ordered array of effect windows (non-decreasing
+`at`, equal `at` allowed for different slots). Each window:
+
+- `at` — integer tick, `0 <= at <` the pattern's `ticks`, inclusive start.
+- `type` — one of `arpeggio`, `note_cut`, `lfo`, `slide`, `glissando`,
+  `noise_retrig`.
+- `until` — optional integer exclusive end tick, default the pattern's `ticks`;
+  `at < until <= ticks`. Nothing crosses the pattern boundary; the engine's OFF
+  command is emitted at `until`.
+- the type's operands, below.
+
+Effect state in the engine is per physical channel. A pattern is monophonic, so
+every window in a pattern belongs to that pattern's single voice. Within a
+pattern, windows in the same **slot** must be ordered and non-overlapping. The
+slots are: `arpeggio`/`note_cut` share one “retrigger” slot (they program the
+same `arpTiming`/`arpNotes`/`arpCount` state and their OFF command is the same
+opcode, `ATM_CMD_I_ARPEGGIO_OFF == ATM_CMD_I_NOTECUT_OFF`), and `slide`, `lfo`,
+`glissando`, `noise_retrig` are one slot each. `noise_retrig` is admitted only
+in a pattern whose events are noise instruments; the other five only in pulse
+patterns. (The engine would execute some of them on the noise channel, but the
+subset scopes them. A pattern with no events has no determinable voice, so the
+channel check does not apply; such effects are accepted but never sound.)
+
+All byte mappings below were checked against `src/atm_cmd_constants.h`,
+`src/cmd_parse.c` and `src/atm_synth.c`.
+
+- **arpeggio** — `offsets` (array of 1 or 2 integers `0..14`), `period`
+  (integer `1..32` ticks), `repeat` (optional boolean, default `true`).
+  Offsets are absolute semitone intervals from the **base** note: `offsets=[a]`
+  cycles base → base+a (two-step); `offsets=[a,b]` cycles base → base+a →
+  base+b (three-step). The engine adds each stored nibble to the base note (it
+  does not chain), so each offset must be `<= 14` because nibble `15` selects
+  note-off. Bytes: `ATM_CMD_P_ARPEGGIO_ON, notes, arpTiming` with
+  `notes = (offsets[0] << 4) | offsets[1]` (low nibble unused for
+  a two-step cycle) and `arpTiming = (period - 1) | (two_step ? 0x40 : 0) |
+  (repeat ? 0 : 0x20)`. `arpTiming` bit 6 selects the step count (set =
+  two-step), bit 5 disables the automatic base re-trigger (`repeat=false`), and
+  bits 4:0 are `period - 1`, so the engine advances one arpeggio step every
+  `period` ticks. The window ends with `ATM_CMD_I_ARPEGGIO_OFF`.
+- **note_cut** — `period` (integer `1..32` ticks), `repeat` (optional boolean,
+  default `true`). Silences the channel `period` ticks after the note starts;
+  `repeat=true` re-attacks the base note every `2*period` ticks, `repeat=false`
+  cuts once and stays off. Bytes: `ATM_CMD_P_NOTECUT_ON, (period - 1) | 0x40 |
+  (repeat ? 0 : 0x20)` with `arpNotes = 0xFF`. Shares the arpeggio slot; OFF is
+  `ATM_CMD_I_ARPEGGIO_OFF`.
+- **lfo** — `mode` (`tremolo` | `vibrato` | `modulation`), `depth`
+  (`0..255`), `period` (even integer `2..64` ticks). The mode selects the
+  engine target: `tremolo` → volume (`params[0]=0`), `vibrato` →
+  `phase_increment` (`1`), `modulation` → `mod` (`2`); the selector lands in
+  `treviConfig` bits 7:6. Bytes: `ATM_CMD_P_LFO_ON, mode_sel, depth, period/2 -
+  1`. The engine stores the half period minus one in the low 5 bits, so a full
+  cycle is `2*(byte+1) = period` ticks. `period` must be even because the
+  half-period is `period/2`. There is one LFO slot; OFF is
+  `ATM_CMD_P_LFO_OFF` (the engine zeroes `treviDepth` regardless of target).
+- **slide** — `param` (`volume` | `frequency` | `modulation`), `amount`
+  (integer `-128..127`, an engine `int8`), `every` (integer `1..64` ticks).
+  `param` writes the engine selector `0/1/2` (volume/`phase_increment`/`mod`);
+  `every` is the number of ticks between applications, stored as `every - 1` in
+  the advanced operand (the engine compares a 6-bit counter against
+  `slide_config & 0x3F`). Bytes: the plain two-operand form
+  `ATM_CMD_P_SLIDE_ON, sel, (int8)amount` when `every == 1`, or the advanced
+  three-operand form `ATM_CMD_P_SLIDE_ADV_ON, sel, (int8)amount, every - 1`
+  otherwise. This engine has **no step-count operand**, so the subset has no
+  `steps` field. OFF is `ATM_CMD_P_SLIDE_OFF, sel`.
+- **glissando** — `period` (integer `1..128` ticks), `direction`
+  (`up` | `down`). Steps the channel note ±1 semitone every `period` ticks,
+  clamped to C2..D7. Bytes:
+  `ATM_CMD_P_GLISSANDO_ON, (period - 1) | (direction == "down" ? 0x80 : 0)`;
+  low 7 bits are `period - 1`, bit 7 selects descending. OFF is
+  `ATM_CMD_I_GLISSANDO_OFF`.
+- **noise_retrig** — `period` (integer `0..3`), `note` (noise token, C2..D7).
+  Retriggers the noise oscillator every `period + 1` ticks at the note's
+  frequency index. Bytes: `ATM_CMD_1P_NOISE_RETRIG_ON, (note_index << 2) |
+  period`; `reConfig` bits 7:2 are the note index and bits 1:0 the speed. OFF
+  is `ATM_CMD_I_NOISE_RETRIG_OFF`.
+
+### Pattern commands
+
+`patterns.<name>.commands` is an ordered array (non-decreasing `at`) of
+instantaneous commands, at most one per `(type, at)`. `at` is in `[0, ticks)`.
+Each command has `at`, `type`, and integer `value`:
+
+| `type` | `value` | Engine effect |
+|---|---|---|
+| `set_tempo` | `8..255` | writes the shared `atmlib_state.tick_rate` (`ATM_CMD_M_SET_TEMPO`) |
+| `add_tempo` | `-128..127` | signed add to the shared tick rate (`ATM_CMD_M_ADD_TEMPO`) |
+| `set_transposition` | `-128..127` | per-channel `trans_config` int8 (`ATM_CMD_M_SET_TRANSPOSITION`) |
+| `add_transposition` | `-128..127` | signed add to `trans_config` (`ATM_CMD_M_ADD_TRANSPOSITION`) |
+| `set_volume` | `0..255` | per-channel `ch->vol` and oscillator volume (`ATM_CMD_M_SET_VOLUME`) |
+| `set_mod` | `0..255` | per-channel `ch->mod` (`ATM_CMD_M_SET_MOD`) |
+| `cue` | `0..255` | latches the shared cue byte, read by `atm_synth_get_cue`/`atm_synth_check_cue` (`ATM_CMD_M_CUE`) |
+
+`set_tempo` values below 8 wrap the timer divider (see the clock rules), and 0
+would divide by zero, so the range starts at 8. `set_tempo`, `add_tempo` and
+`cue` write score-global state, so every channel that plays the pattern
+re-executes them; `set_transposition`, `set_volume` and `set_mod` write the
+playing channel's state. Prefer `set_*` over `add_*` for any pattern shared by
+more than one channel.
+
+### Diagnostics
+
+Effects and commands reuse `TYPE_MISMATCH`, `MISSING_FIELD`, `UNKNOWN_FIELD`,
+`VALUE_RANGE`, `INVALID_NOTE`, `PITCH_RANGE` and `LIMIT_EXCEEDED`, and add these
+stable codes, each with a JSON Pointer and suggestion:
+`UNKNOWN_EFFECT_TYPE`, `EFFECT_BOUNDS`, `EFFECT_ORDER`, `EFFECT_OVERLAP`,
+`EFFECT_CHANNEL_MISMATCH`, `UNKNOWN_COMMAND_TYPE`, `COMMAND_BOUNDS`,
+`COMMAND_ORDER`, `COMMAND_DUPLICATE`. An invalid window or command removes the
+whole pattern from admission, exactly like an invalid note event.
 
 ## Compiler boundary
 
@@ -337,12 +464,16 @@ fields. Keep an optional agent skill or MCP transport as follow-up packaging.
 
 ## Deferred extensions and unresolved evidence
 
-- Partial-song loops, FX loops and tempo changes require selected playback
-  contracts and original-equivalent boundary tests. Whole-song PROGMEM loops
-  are supported for the effect-free v1 subset above.
-- Advanced effects require named typed operands, documented parameter units and
-  shared-slot collision rules. README descriptions contain discrepancies (for
-  example slide target numbering); source and measured traces decide behavior.
+- Partial-song loops and FX loops require selected playback contracts and
+  original-equivalent boundary tests. Whole-song PROGMEM loops are supported for
+  the v1 subset above; in-song tempo changes are now expressible through the
+  additive `commands` key.
+- The v1 effect-window subset now carries named typed operands, documented units
+  and shared-slot collision rules (above). Remaining effect work — emitted bytes
+  and trace-backed semantics in the PROGMEM backend, capability reporting, and
+  viewer/inspect effect state — is tracked in `ATMlib2FX-3ii.14.*`. README
+  descriptions may still contain discrepancies (for example slide target
+  numbering); source and measured traces decide behavior.
 - A host envelope/preset feature must show its generated event density and asset
   cost. It cannot introduce new device-side instrument state implicitly.
 - SFX authoring needs a separate mono profile and explicit target channel,
@@ -419,13 +550,13 @@ implements the local HTML/JavaScript track review this plan proposed:
   (≈ −2000, zero AC) is described as acoustically silent rather than neutral.
 - Lane checkboxes are visibility only and never mute/solo; the WAV is a mono
   speaker mix.
-- **Capability report mismatch, deliberately not changed.** `capabilities --json`
-  still reports `inspect`/`render` unavailable because the 3ii.1
-  `expected/review.json` golden embeds that capabilities block and
-  `test_progmem.CapabilityTests` pins it. Regenerating that frozen golden is out
-  of scope, so `inspect` and `render` instead report their own truthful
-  availability in their payloads, and the viewer shows the same. The divergence
-  is pinned by `test_inspect.CapabilityDivergenceTests`.
+- **Capability report matches real command support.** `capabilities --json`
+  advertises `inspect`, `render` and `wav_preview` as available, matching the
+  reachable CLI commands. The frozen 3ii.1 `expected/review.json` golden keeps
+  its byte-stable embedded capabilities block unchanged; `test_progmem`
+  (`CapabilityTests`) and `test_inspect` (`CapabilityReportTests`) pin both the
+  live summary and the golden. `inspect` and `render` also report their own
+  truthful availability in their payloads, and the viewer shows the same.
 
 See `tools/music_authoring/viewer/README.md` for the embedded document shape and
 the offline walkthrough driver.

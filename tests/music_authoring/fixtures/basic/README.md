@@ -217,9 +217,9 @@ is not possible from one WAV (channel ordering is covered by the tick trace and
 the time-isolated fixture). While PWM runs the emulated neutral is 0 plus a small
 DC-quantization offset (measured silence = 2); after the score ends the engine
 stops PWM and the capture is a constant DC rail (~−2000, zero AC). Both are
-acoustically silent but not equal to 0. `capabilities` still reports render
-unavailable because ATMlib2FX-3ii.1 pinned that payload in the `review.json`
-golden; the render command reports its own availability.
+acoustically silent but not equal to 0. `capabilities` advertises `render` (and
+`inspect`/`wav_preview`) as available, matching the working commands; the frozen
+`review.json` golden keeps its embedded capabilities block unchanged.
 
 ## Gaps / honest limitations
 
