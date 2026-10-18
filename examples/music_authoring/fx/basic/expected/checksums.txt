@@ -1,0 +1,6 @@
+# Finite-v1 compact FX expected assets (ATMlib2FX-3ii.3).
+# Regenerate: tools/atm-music build examples/music_authoring/fx/basic/song.json --backend fx --out examples/music_authoring/fx/basic/expected --json
+61b5ac014d846e0abea3b955a4a28d9c2f4e47ba49f4116c1bb9c3f6ac151de3  song.json
+b14e02cc3619c3bc40119b76b9a6d362a2a72ec5522e71f8f9bdbd24ae5534e3  expected/stream.bin
+641dafa0964c7b42fdff792e2a7e243856407d8e57f9d34d17a10039329043dd  expected/stream.h
+f9fbdec9d07280efad499f6151c3befb76f201e903c0c93fd3ace5a1c727ed49  expected/review.json

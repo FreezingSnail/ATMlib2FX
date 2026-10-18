@@ -1,0 +1,227 @@
+{
+  "payload": "atmlib-review",
+  "payload_version": 1,
+  "tool": {
+    "name": "atm-music",
+    "version": "1.0.0"
+  },
+  "engine": {
+    "name": "ATMlib",
+    "library_version": "1.2.4",
+    "channels": [
+      "pulse0",
+      "pulse1",
+      "pulse2",
+      "noise"
+    ],
+    "tick_base_hz": 2000
+  },
+  "source": {
+    "sha256": "79210a64106d3067e82e496d47eec2eee8f350ddfd8ef3300f38318dd8791d79",
+    "bytes": 861,
+    "path": "examples/music_authoring/fx/stress/song.json"
+  },
+  "clock": {
+    "tick_rate": 255,
+    "effective_tick_rate": 285.7142857142857,
+    "ticks_per_beat": 32,
+    "beats_per_bar": 4,
+    "effective_bpm": 535.7142857142858
+  },
+  "total_ticks": 192,
+  "channels": [
+    {
+      "index": 0,
+      "name": "pulse0",
+      "voice": "pulse",
+      "used": true,
+      "note_count": 4,
+      "event_count": 17
+    },
+    {
+      "index": 1,
+      "name": "pulse1",
+      "voice": "pulse",
+      "used": false,
+      "note_count": 0,
+      "event_count": 0
+    },
+    {
+      "index": 2,
+      "name": "pulse2",
+      "voice": "pulse",
+      "used": false,
+      "note_count": 0,
+      "event_count": 0
+    },
+    {
+      "index": 3,
+      "name": "noise",
+      "voice": "noise",
+      "used": true,
+      "note_count": 2,
+      "event_count": 6
+    }
+  ],
+  "notes": [
+    {
+      "channel": 0,
+      "start_tick": 0,
+      "duration": 8,
+      "gate_end_tick": 8,
+      "note": "C4",
+      "note_index": 25,
+      "instrument": "lead",
+      "volume": 80,
+      "duty": 127,
+      "pattern": "lead_sparse",
+      "repeat_index": 0,
+      "pattern_instance_index": 0,
+      "source": "/patterns/lead_sparse/events/0"
+    },
+    {
+      "channel": 0,
+      "start_tick": 48,
+      "duration": 8,
+      "gate_end_tick": 56,
+      "note": "E4",
+      "note_index": 29,
+      "instrument": "lead",
+      "volume": 80,
+      "duty": 127,
+      "pattern": "lead_sparse",
+      "repeat_index": 0,
+      "pattern_instance_index": 0,
+      "source": "/patterns/lead_sparse/events/1"
+    },
+    {
+      "channel": 0,
+      "start_tick": 96,
+      "duration": 8,
+      "gate_end_tick": 104,
+      "note": "C4",
+      "note_index": 25,
+      "instrument": "lead",
+      "volume": 80,
+      "duty": 127,
+      "pattern": "lead_sparse",
+      "repeat_index": 1,
+      "pattern_instance_index": 1,
+      "source": "/patterns/lead_sparse/events/0"
+    },
+    {
+      "channel": 0,
+      "start_tick": 144,
+      "duration": 8,
+      "gate_end_tick": 152,
+      "note": "E4",
+      "note_index": 29,
+      "instrument": "lead",
+      "volume": 80,
+      "duty": 127,
+      "pattern": "lead_sparse",
+      "repeat_index": 1,
+      "pattern_instance_index": 1,
+      "source": "/patterns/lead_sparse/events/1"
+    },
+    {
+      "channel": 3,
+      "start_tick": 24,
+      "duration": 2,
+      "gate_end_tick": 26,
+      "note": "A2",
+      "note_index": 10,
+      "instrument": "perc",
+      "volume": 60,
+      "duty": null,
+      "pattern": "perc_sparse",
+      "repeat_index": 0,
+      "pattern_instance_index": 0,
+      "source": "/patterns/perc_sparse/events/0"
+    },
+    {
+      "channel": 3,
+      "start_tick": 120,
+      "duration": 2,
+      "gate_end_tick": 122,
+      "note": "A2",
+      "note_index": 10,
+      "instrument": "perc",
+      "volume": 60,
+      "duty": null,
+      "pattern": "perc_sparse",
+      "repeat_index": 1,
+      "pattern_instance_index": 1,
+      "source": "/patterns/perc_sparse/events/0"
+    }
+  ],
+  "pattern_instances": [
+    {
+      "channel": 0,
+      "index": 0,
+      "pattern": "lead_sparse",
+      "repeat_index": 0,
+      "start_tick": 0,
+      "ticks": 96,
+      "source": "/tracks/pulse0/0"
+    },
+    {
+      "channel": 0,
+      "index": 1,
+      "pattern": "lead_sparse",
+      "repeat_index": 1,
+      "start_tick": 96,
+      "ticks": 96,
+      "source": "/tracks/pulse0/0"
+    },
+    {
+      "channel": 3,
+      "index": 0,
+      "pattern": "perc_sparse",
+      "repeat_index": 0,
+      "start_tick": 0,
+      "ticks": 96,
+      "source": "/tracks/noise/0"
+    },
+    {
+      "channel": 3,
+      "index": 1,
+      "pattern": "perc_sparse",
+      "repeat_index": 1,
+      "start_tick": 96,
+      "ticks": 96,
+      "source": "/tracks/noise/0"
+    }
+  ],
+  "event_digest": {
+    "algorithm": "sha256",
+    "canonicalization": "atmlib-canonical-events-v1",
+    "hex": "9b1a4f51c99da91e6952b2caa29627b5f380cb92cf4a46f5a3be1a46a6e7d759"
+  },
+  "diagnostics": [],
+  "capabilities": {
+    "backend": {
+      "progmem": {
+        "available": true
+      },
+      "fx": {
+        "available": false,
+        "reason": "FX playback contract is pending the architecture decision in ATMlib2FX-hlh.2; FX export is owned by ATMlib2FX-3ii.3."
+      }
+    },
+    "capabilities": {
+      "inspect": {
+        "available": false,
+        "reason": "Offline HTML/JS track review is owned by ATMlib2FX-3ii.6; this task publishes the canonical review payload only."
+      },
+      "render": {
+        "available": false,
+        "reason": "No WAV renderer is implemented in this task; bounded WAV preview and playback evidence are owned by ATMlib2FX-3ii.2."
+      },
+      "wav_preview": {
+        "available": false,
+        "reason": "No WAV renderer is implemented in this task; bounded WAV preview and playback evidence are owned by ATMlib2FX-3ii.2."
+      }
+    }
+  }
+}

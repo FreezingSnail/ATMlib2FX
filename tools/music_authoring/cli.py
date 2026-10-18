@@ -13,6 +13,8 @@ import os
 import sys
 
 from .lower import validate_summary
+from .fx_backend import FxAdmissionError
+from .fx_backend import diagnostics_for as fx_diagnostics_for
 from .progmem_backend import (
     BackendLimit,
     build as build_backend,
@@ -21,6 +23,9 @@ from .progmem_backend import (
 )
 from .score import Diagnostic, Score, TOOL_NAME, TOOL_VERSION
 from .validate import load_and_validate
+
+BACKENDS = ("progmem", "fx")
+BUILD_BACKENDS = ("progmem", "fx")
 
 
 def _envelope(
@@ -53,7 +58,7 @@ def _io_failure(message: str) -> dict:
     )
 
 
-def _backend_unavailable(backend: str) -> dict:
+def _backend_unavailable(backend: str, capability: str = "command") -> dict:
     return _envelope(
         False,
         [
@@ -61,10 +66,11 @@ def _backend_unavailable(backend: str) -> dict:
                 "BACKEND_UNAVAILABLE",
                 "",
                 (
-                    f"Backend {backend!r} is not implemented. The FX playback "
-                    "contract is pending ATMlib2FX-hlh.2 (owned by ATMlib2FX-3ii.3)."
+                    f"Backend {backend!r} is not available for {capability}. "
+                    "The finite-v1 FX adapter (options/stream framing pinned by "
+                    "ATMlib2FX-hlh.6) is exposed by `build --backend fx` only."
                 ),
-                "Use --backend progmem; read capabilities for availability.",
+                "Use --backend progmem for validate/render; read capabilities.",
             )
         ],
     )
@@ -93,7 +99,7 @@ def cmd_capabilities(_args: argparse.Namespace) -> int:
 
 def cmd_validate(args: argparse.Namespace) -> int:
     if args.backend != "progmem":
-        _emit(_backend_unavailable(args.backend))
+        _emit(_backend_unavailable(args.backend, "validate"))
         return 2
     score, diagnostics, code = _load(args.song)
     if score is None:
@@ -111,8 +117,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    if args.backend != "progmem":
-        _emit(_backend_unavailable(args.backend))
+    if args.backend not in BUILD_BACKENDS:
+        _emit(_backend_unavailable(args.backend, "build"))
         return 2
     score, diagnostics, code = _load(args.song)
     if score is None:
@@ -123,22 +129,35 @@ def cmd_build(args: argparse.Namespace) -> int:
 
     try:
         lowered = lower(score)
-        result, artifacts = build_backend(score, lowered, args.out)
+        if args.backend == "fx":
+            from . import fx_backend
+
+            result, artifacts = fx_backend.build(score, lowered, args.out)
+            warnings = list(result.diagnostics)
+        else:
+            result, artifacts = build_backend(score, lowered, args.out)
+            warnings = []
     except BackendLimit as exc:
         _emit(_envelope(False, diagnostics_for(exc)))
+        return 2
+    except FxAdmissionError as exc:
+        _emit(_envelope(False, fx_diagnostics_for(exc)))
         return 2
     except OSError as exc:
         _emit(_io_failure(f"Cannot write build artifacts: {exc}"))
         return 3
     except Exception as exc:  # pragma: no cover - defensive tool failure
-        _emit(_io_failure(f"PROGMEM build failed: {exc}"))
+        _emit(_io_failure(f"{args.backend.upper()} build failed: {exc}"))
         return 3
 
-    _log(f"wrote {artifacts['score.bin']} ({result.report['score']['bytes']} bytes)")
+    for diagnostic in warnings:
+        _log(f"warning {diagnostic.code}: {diagnostic.message}")
+    asset = "score.bin" if args.backend == "progmem" else "stream.bin"
+    _log(f"wrote {artifacts[asset]} ({result.report.get('score', result.report.get('stream'))['bytes']} bytes)")
     _emit(
         _envelope(
             True,
-            [],
+            warnings,
             artifacts=artifacts,
             report=result.report,
         )
@@ -148,7 +167,7 @@ def cmd_build(args: argparse.Namespace) -> int:
 
 def cmd_render(args: argparse.Namespace) -> int:
     if args.backend != "progmem":
-        _emit(_backend_unavailable(args.backend))
+        _emit(_backend_unavailable(args.backend, "render"))
         return 2
     from .render import render
 

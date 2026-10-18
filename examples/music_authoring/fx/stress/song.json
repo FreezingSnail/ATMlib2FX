@@ -1,0 +1,44 @@
+{
+  "format": "atmlib-score",
+  "version": 1,
+  "id": "fx_stress_v1",
+  "clock": {
+    "tick_rate": 255,
+    "ticks_per_beat": 32,
+    "beats_per_bar": 4
+  },
+  "instruments": {
+    "lead": {
+      "voice": "pulse",
+      "volume": 80,
+      "duty": 127
+    },
+    "perc": {
+      "voice": "noise",
+      "volume": 60
+    }
+  },
+  "patterns": {
+    "lead_sparse": {
+      "ticks": 96,
+      "events": [
+        {"at": 0, "note": "C4", "duration": 8, "instrument": "lead"},
+        {"at": 48, "note": "E4", "duration": 8, "instrument": "lead"}
+      ]
+    },
+    "perc_sparse": {
+      "ticks": 96,
+      "events": [
+        {"at": 24, "note": "A2", "duration": 2, "instrument": "perc"}
+      ]
+    }
+  },
+  "tracks": {
+    "pulse0": [
+      {"pattern": "lead_sparse", "repeat": 2}
+    ],
+    "noise": [
+      {"pattern": "perc_sparse", "repeat": 2}
+    ]
+  }
+}

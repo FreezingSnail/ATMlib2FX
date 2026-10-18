@@ -352,6 +352,34 @@ def capability_summary() -> dict:
     from .lower import availability
 
     available = availability()
+    backends = dict(available["backend"])
+    # The finite-v1 FX adapter is now supported for `build --backend fx`
+    # (stream framing selected by ATMlib2FX-hlh.6).  Advertise only finite v1:
+    # loops, live effects and SFX are explicitly not offered.
+    backends["fx"] = {
+        "available": True,
+        "command": "build",
+        "format": "atm_fx_compact_v1",
+        "ring_capacity": 32,
+        "finite_v1": True,
+        "advertises": {"loops": False, "effects": False, "sfx": False},
+    }
+    features = [
+        "notes",
+        "rests",
+        "pulse_duty",
+        "fixed_instrument_volume",
+        "finite_pattern_reuse",
+        "finite_arrangement",
+        "whole_song_loop",
+        "explicit_gate_mute",
+        "canonical_review_payload",
+        "progmem_export",
+        "validate",
+        "fx_stream_export",
+        "finite_v1_fx",
+        "packing_metadata",
+    ]
     return {
         "schema_version": SCHEMA_VERSION,
         "tool": {"name": TOOL_NAME, "version": TOOL_VERSION},
@@ -361,19 +389,7 @@ def capability_summary() -> dict:
             "channels": list(CHANNEL_NAMES),
             "tick_base_hz": TICK_BASE_HZ,
         },
-        "features": [
-            "notes",
-            "rests",
-            "pulse_duty",
-            "fixed_instrument_volume",
-            "finite_pattern_reuse",
-            "finite_arrangement",
-            "whole_song_loop",
-            "explicit_gate_mute",
-            "canonical_review_payload",
-            "progmem_export",
-            "validate",
-        ],
+        "features": features,
         "channels": list(CHANNEL_NAMES),
         "channel_voices": {
             "pulse0": "pulse",
@@ -387,7 +403,7 @@ def capability_summary() -> dict:
             "note_indices": [1, 63],
         },
         "host_limits": dict(HOST_LIMITS),
-        "backends": available["backend"],
+        "backends": backends,
         "capabilities": available["capabilities"],
         "canonicalization": "atmlib-canonical-events-v1",
         "review_payload_version": 1,

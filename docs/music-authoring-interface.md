@@ -429,3 +429,33 @@ implements the local HTML/JavaScript track review this plan proposed:
 
 See `tools/music_authoring/viewer/README.md` for the embedded document shape and
 the offline walkthrough driver.
+
+## Finite-v1 FX export (ATMlib2FX-3ii.3)
+
+`build --backend fx` is now offered for **finite (non-looping, no-effect, no-SFX)
+v1 scores only**. The byte layout, limits and semantics are the pinned contract
+selected by `ATMlib2FX-hlh.6` (see the `hlh.6 review` section of
+[`research/fx/fx-architecture-decision.md`](../research/fx/fx-architecture-decision.md));
+the adapter is [`tools/music_authoring/fx_backend.py`](../tools/music_authoring/fx_backend.py).
+
+- It emits deterministic assets — `stream.bin` (magic `0xC0`, `<len> <gap>
+  <bitmap> <groups>` records, `0x00` END), `stream.h`, `review.json`,
+  `report.json` — plus packing metadata (ticks, passes, payload/framing bytes,
+  max group/record and the worst 1..8-tick decode window). Re-running yields
+  byte-identical output.
+- Admission enforces the pinned limits (record `<= ring`, default 32 B; no
+  traversal/`SET_LOOP_PATTERN`; no effects or SFX) and the controlled foreground
+  service window. Failures are `DUE_GROUP_TOO_LARGE` / `LIMIT_EXCEEDED` /
+  `CAPABILITY_UNSUPPORTED` diagnostics that point at the offending source JSON
+  Pointer.
+- A runtime global loop is **not representable** by the finite stream. A source
+  with `"loop": true` is exported as its finite arrangement exactly once and
+  reported with a source-pointed `LOOP_NOT_EXPORTED` warning; `capabilities`
+  never advertises loops, effects or SFX for this backend.
+- `validate` and `render` stay on `progmem`; `--backend fx` there exits `2` with
+  `BACKEND_UNAVAILABLE`. The PROGMEM default build is unchanged.
+
+Fixtures, expected assets and the host equivalence/stress lane live under
+[`examples/music_authoring/fx/`](../examples/music_authoring/fx/README.md) and
+`tests/music_authoring/fx/`.
+

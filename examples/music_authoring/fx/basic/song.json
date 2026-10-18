@@ -1,0 +1,72 @@
+{
+  "format": "atmlib-score",
+  "version": 1,
+  "id": "basic_fx_v1",
+  "clock": {
+    "tick_rate": 50,
+    "ticks_per_beat": 25,
+    "beats_per_bar": 4
+  },
+  "instruments": {
+    "lead": {
+      "voice": "pulse",
+      "volume": 80,
+      "duty": 127
+    },
+    "bass": {
+      "voice": "pulse",
+      "volume": 64,
+      "duty": 200
+    },
+    "perc": {
+      "voice": "noise",
+      "volume": 90
+    }
+  },
+  "patterns": {
+    "lead_line": {
+      "ticks": 16,
+      "events": [
+        {"at": 0, "note": "C4", "duration": 4, "instrument": "lead"},
+        {"at": 8, "note": "E4", "duration": 4, "instrument": "lead"},
+        {"at": 12, "note": "G4", "duration": 4, "instrument": "lead"}
+      ]
+    },
+    "short": {
+      "ticks": 8,
+      "events": [
+        {"at": 0, "note": "C5", "duration": 1, "instrument": "lead"},
+        {"at": 1, "note": "D5", "duration": 1, "instrument": "lead"},
+        {"at": 2, "note": "E5", "duration": 3, "instrument": "lead"}
+      ]
+    },
+    "bassline": {
+      "ticks": 16,
+      "events": [
+        {"at": 0, "note": "C3", "duration": 8, "instrument": "bass"},
+        {"at": 8, "note": "G3", "duration": 8, "instrument": "bass"}
+      ]
+    },
+    "percs": {
+      "ticks": 16,
+      "events": [
+        {"at": 0, "note": "A2", "duration": 2, "instrument": "perc"},
+        {"at": 8, "note": "A2", "duration": 2, "instrument": "perc"}
+      ]
+    }
+  },
+  "tracks": {
+    "pulse0": [
+      {"pattern": "lead_line", "repeat": 2}
+    ],
+    "pulse1": [
+      {"pattern": "short", "repeat": 4}
+    ],
+    "pulse2": [
+      {"pattern": "bassline", "repeat": 1}
+    ],
+    "noise": [
+      {"pattern": "percs", "repeat": 2}
+    ]
+  }
+}

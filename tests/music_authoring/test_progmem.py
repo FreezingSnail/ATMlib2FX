@@ -152,13 +152,23 @@ class SerializationTests(unittest.TestCase):
 
 
 class CapabilityTests(unittest.TestCase):
-    def test_fx_and_render_unavailable(self):
+    def test_fx_advertised_finite_only_and_render_unavailable(self):
         summary = capability_summary()
         self.assertTrue(summary["backends"]["progmem"]["available"])
-        self.assertFalse(summary["backends"]["fx"]["available"])
+        # FX is now supported for `build --backend fx` (finite v1 only).
+        self.assertTrue(summary["backends"]["fx"]["available"])
+        self.assertEqual(summary["backends"]["fx"]["format"], "atm_fx_compact_v1")
+        self.assertEqual(summary["backends"]["fx"]["command"], "build")
+        self.assertEqual(
+            summary["backends"]["fx"]["advertises"],
+            {"loops": False, "effects": False, "sfx": False},
+        )
+        self.assertIn("finite_v1_fx", summary["features"])
+        self.assertNotIn("fx_loops", summary["features"])
+        # Pinned divergence: the canonical review payload golden keeps these
+        # unavailable (documented in tests/music_authoring/test_inspect.py).
         self.assertFalse(summary["capabilities"]["render"]["available"])
         self.assertFalse(summary["capabilities"]["wav_preview"]["available"])
-        self.assertIn("reason", summary["backends"]["fx"])
 
     def test_pitch_range_advertised(self):
         summary = capability_summary()
