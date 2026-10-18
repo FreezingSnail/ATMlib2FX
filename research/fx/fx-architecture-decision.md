@@ -640,7 +640,58 @@ macros is **byte-identical** in `.text` to the retained ELF
 
 ### Not claimed
 
-Streaming loop wraps (a loop region that does not fit the ring) are rejected, not
-implemented. The authoring adapter `ATMlib2FX-3ii.3` still exports finite v1
-only; the loop extension is documented here for a later adapter. Game fit
+Streaming loop wraps (a loop region that does not fit the ring) are rejected by
+the hlh.8 decoder. The authoring adapter `ATMlib2FX-3ii.3` still exports finite
+v1 only; the loop extension is documented here for a later adapter. Game fit
 remains hlh.11.
+
+> **Superseded by hlh.16** for the streaming-wrap sentence; see the next section.
+
+
+## hlh.16: streaming loops for regions larger than the ring (2026-10-18)
+
+Decision bead: `ATMlib2FX-hlh.16`. It removes the hlh.8 restriction that a
+`0xC1` loop region must fit the ring. The pinned record framing is unchanged; the
+only change is where the wrap is performed.
+
+* **Acceptance.** `atm_fx_compact_play` accepts a loop region up to
+  `ATM_FX_COMPACT_LOOP_MAX_REGION` (default `0xFFFF`, the uint16 region counter).
+  A region `<= ATM_FX_COMPACT_RING` keeps the hlh.8 pinned path (resident replay,
+  no further fetch, bit-for-bit identical). A larger region sets the
+  `loop_streaming` state and is streamed.
+* **Streaming wrap.** The wrap belongs to the **foreground producer**
+  (`atm_fx_compact_fill`): when the fetch position reaches the trailing END byte
+  it re-points to `loop_start` and keeps pre-filling. The END byte is never
+  written to the ring, so the timer consumer only ever sees loop records and the
+  same-tick restart semantics are exactly the pinned ones (all-stopped sync,
+  per-record restart mask bits 4..7, effect-only extra passes with gap 0). The
+  first loop record is therefore applied on the same tick as the all-stopped
+  pass, as in the original engine.
+* **Failure accounting.** An unprefillable wrap (foreground starved while the
+  consumer catches up) is an **underrun**: the consumer freezes, effect/tick
+  state does not advance, and `underruns` increments — never a skipped tick. An
+  END byte reaching the timer in streaming mode, a region above the bound, or an
+  oversize record is a sticky format/oversize error that stops the player.
+* **Gating.** All new code/SRAM is inside `ATM_FX_COMPACT_LOOP`; the streaming
+  block additionally has `ATM_FX_COMPACT_LOOP_STREAMING` (default =
+  `ATM_FX_COMPACT_LOOP`, used to measure the footprint delta). The default build
+  is unchanged.
+* **Adapter.** `tools/music_authoring/fx_backend.py` gains a capability switch
+  (`build --streaming-loops`, `serialize_compact(streaming_loops=True)`). Off by
+  default: a large region still falls back to the finite `0xC0` stream with
+  `LOOP_NOT_EXPORTED`, byte-stable. On, the same `0xC1` framing is exported for a
+  region up to the bound; above the bound it is a source-pointed `LIMIT_EXCEEDED`
+  on `/loop`. The exporter also preflights that each record and each same-tick
+  pass chain fits the ring.
+* **Compatibility.** A large-region stream fed to a pre-hlh.16 (or
+  `LOOP_STREAMING=0`) decoder is a clean header rejection (format error, stop),
+  never garbling. Finite `0xC0` output and the pinned small-region path are
+  byte-identical.
+* **Evidence.** `build/fx-port/streaming-loop/` — Snapdragon Sprint (region
+  4647 B, ring 64) over two loop cycles: host decoder trace byte-identical to the
+  unmodified original engine over 6300 ticks; absim `ticks=4179 underruns=0
+  error=0 stop_tick=0`, 1042 B stack headroom; streaming delta +138 B program /
+  +1 B SRAM over the pinned-only loop build. Same-stream ring 16 (streaming) and
+  ring 32 (pinned) traces are byte-identical.
+* **Docs owned by hlh.15.** Advertise the new capability/bound and this section
+  in the user-facing docs.

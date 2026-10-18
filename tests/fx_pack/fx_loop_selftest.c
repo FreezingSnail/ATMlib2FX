@@ -409,6 +409,66 @@ static void test_decoder_loop_restart(void)
 	      (atmlib_state.channel_active_mute & (1u << OSC_CH_COUNT)) != 0);
 }
 
+/* Streaming loop fixture (ATMlib2FX-hlh.16): a loop region larger than the
+ * 32-byte ring. Intro record at tick 0, then a 38-byte loop region:
+ *   A: ch0 STOP + restart mask 1, gap 0   (all-stopped sync, same tick)
+ *   B: ch0 note 13, gap 1
+ *   C: ch0 11 one-byte notes, gap 1
+ *   D: ch0 9 one-byte notes, gap 1
+ * loop_start_rel = 9. The region does not fit the ring, so the decoder must
+ * stream it (re-fetching at the wrap) rather than pin it. */
+static void build_streaming_loop(void)
+{
+	reset_stream();
+	putb(0xC1);
+	putb(0x09); putb(0x00); putb(0x00);        /* loop_start_rel = 9 */
+	/* intro record (tick 0): len 5, gap 2, bitmap 1, glen 1, note 12 */
+	putb(0x05); putb(0x02); putb(0x01); putb(0x01); putb(12);
+	/* A: len 5, gap 0, bitmap 0x11 (ch0 + restart mask 1), STOP */
+	putb(0x05); putb(0x00); putb(0x11); putb(0x01); putb(0x61);
+	/* B: len 5, gap 1, bitmap 1, glen 1, note 13 */
+	putb(0x05); putb(0x01); putb(0x01); putb(0x01); putb(13);
+	/* C: len 15, gap 1, bitmap 1, glen 11 one-byte notes */
+	putb(0x0F); putb(0x01); putb(0x01); putb(0x0B);
+	for (uint8_t i = 0; i < 11; i++) putb((uint8_t)(20 + i));
+	/* D: len 13, gap 1, bitmap 1, glen 9 one-byte notes */
+	putb(0x0D); putb(0x01); putb(0x01); putb(0x09);
+	for (uint8_t i = 0; i < 9; i++) putb((uint8_t)(40 + i));
+	putb(0x00); /* END */
+}
+
+static void test_decoder_streaming_loop(void)
+{
+	build_streaming_loop();
+	run_decoder(40);
+	check("streaming loop (region > ring) replays with no error/underrun",
+	      atm_fx_compact_state.error == 0 &&
+	      atm_fx_compact_state.underruns == 0 &&
+	      atm_fx_compact_state.active == 1);
+	check("streaming loop keeps looping (ticks advanced past one cycle)",
+	      atm_fx_compact_state.ticks > 12);
+	check("streaming loop re-arms the looping channel at the restart",
+	      (atmlib_state.channel_active_mute & (1u << OSC_CH_COUNT)) != 0);
+}
+
+/* An unprefillable wrap must surface as an underrun: prefill once (play) then
+ * starve the foreground service. The consumer stops when the record at the loop
+ * boundary is not resident; it must not skip a tick or garble the loop (error
+ * stays 0 and the player stays active). */
+static void test_decoder_streaming_underrun(void)
+{
+	build_streaming_loop();
+	atm_fx_compact_play(0, (uint32_t)g_buflen); /* prefill + arm */
+	for (int i = 0; i < 40; i++) {
+		if (host_cb[0].cb == NULL) break;
+		host_cb[0].cb(0, host_cb[0].priv); /* tick, but never service */
+	}
+	check("unprefillable streaming wrap reports an underrun, no error",
+	      atm_fx_compact_state.underruns > 0 &&
+	      atm_fx_compact_state.error == 0 &&
+	      atm_fx_compact_state.active == 1);
+}
+
 /* A 0xC1 header whose loop_start_rel points past the stream is malformed. */
 static void test_decoder_loop_reject(void)
 {
@@ -419,6 +479,23 @@ static void test_decoder_loop_reject(void)
 	putb(0x00);
 	atm_fx_compact_play(0, (uint32_t)g_buflen);
 	check("loop decoder rejects an out-of-range loop header",
+	      atm_fx_compact_state.error != 0 &&
+	      atm_fx_compact_state.active == 0);
+}
+
+/* A loop region beyond ATM_FX_COMPACT_LOOP_MAX_REGION (0xFFFF) is a clean
+ * rejection: the u24 header can address it, but the streamed region counter
+ * cannot, so it must not be replayed partially or garbled. */
+static void test_decoder_loop_region_bound(void)
+{
+	reset_stream();
+	putb(0xC1);
+	putb(0x04); putb(0x00); putb(0x00); /* loop_start_rel = 4 */
+	putb(0x05); putb(0x00); putb(0x01); putb(0x01); putb(12);
+	/* Claim a huge stream length so region = length-1-4 > 0xFFFF. The
+	 * trailing bytes read as zero past the buffer; only the header matters. */
+	atm_fx_compact_play(0, 0x20002u);
+	check("loop decoder rejects a region above the streaming bound",
 	      atm_fx_compact_state.error != 0 &&
 	      atm_fx_compact_state.active == 0);
 }
@@ -450,7 +527,10 @@ int main(void)
 	test_loop_conversion();
 	test_loop_validator();
 	test_decoder_loop_restart();
+	test_decoder_streaming_loop();
+	test_decoder_streaming_underrun();
 	test_decoder_loop_reject();
+	test_decoder_loop_region_bound();
 	test_decoder_all_gap_zero();
 
 	if (g_fail) {

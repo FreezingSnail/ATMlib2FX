@@ -67,10 +67,33 @@
 
 /* Global-loop streams (ATMlib2FX-hlh.8), magic 0xC1. Off by default so the
  * finite build and its code size are unchanged; when enabled the decoder also
- * accepts loop streams and replays the pinned loop region with no further
- * fetch. Requires ATM_FX_COMPACT. */
+ * accepts loop streams. A region that fits the ring is pinned and replayed in
+ * place (no further fetch); a larger region streams through the ring
+ * (ATMlib2FX-hlh.16), the foreground producer re-fetching the region from FX at
+ * the wrap so the timer never sees END. Requires ATM_FX_COMPACT. */
 #ifndef ATM_FX_COMPACT_LOOP
 #define ATM_FX_COMPACT_LOOP (0)
+#endif
+
+/* Largest loop region accepted by the decoder (ATMlib2FX-hlh.16). Bounded by
+ * the uint16 loop-region counter: the loop_start_rel u24 field could address
+ * more, but a streamed region is tracked in 16 bits. A region above this is a
+ * clean format rejection (never a garbled replay). */
+#ifndef ATM_FX_COMPACT_LOOP_MAX_REGION
+#define ATM_FX_COMPACT_LOOP_MAX_REGION (0xFFFF)
+#endif
+
+/* Streaming-loop sub-feature of ATM_FX_COMPACT_LOOP (ATMlib2FX-hlh.16): when
+ * enabled the decoder also accepts a loop region larger than the ring and
+ * streams it (the foreground producer re-fetches the region at the wrap, so the
+ * timer never sees END). On by default for loop builds; disable to recover
+ * exactly the pinned-only hlh.8 decoder, which is how the footprint delta of
+ * the streaming code/SRAM is measured. Requires ATM_FX_COMPACT_LOOP. */
+#ifndef ATM_FX_COMPACT_LOOP_STREAMING
+#define ATM_FX_COMPACT_LOOP_STREAMING (ATM_FX_COMPACT_LOOP)
+#endif
+#if ATM_FX_COMPACT_LOOP_STREAMING && !ATM_FX_COMPACT_LOOP
+#error "ATM_FX_COMPACT_LOOP_STREAMING requires ATM_FX_COMPACT_LOOP"
 #endif
 
 #if (ATM_FX_COMPACT_RING & (ATM_FX_COMPACT_RING - 1)) != 0
@@ -109,6 +132,11 @@ struct atm_fx_compact_state {
 	uint8_t loop_base;      /* ring index of the loop region start  */
 	uint8_t loopable;       /* stream is a 0xC1 loop stream         */
 	uint8_t loop_pinned;    /* loop region resident, no more fetch  */
+#if ATM_FX_COMPACT_LOOP_STREAMING
+	uint8_t loop_streaming; /* region > ring: the foreground producer
+	                         * re-fetches the region at the wrap, so the
+	                         * timer never sees END (ATMlib2FX-hlh.16) */
+#endif
 #endif
 #if ATM_FX_COMPACT_SFX
 	/* --- independent-tempo SFX overlay (PROGMEM compact stream) --- */

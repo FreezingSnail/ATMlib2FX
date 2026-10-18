@@ -45,6 +45,13 @@
  * the wrap). A region whose records all carry gap 0 would replay in a
  * same-tick chain that never yields a tick, so it is rejected. Finite streams
  * still start with 0xC0 and are byte-identical to the finite-v1 output.
+ *
+ * ATMlib2FX-hlh.16 relaxes the *device decoder* to stream a region larger than
+ * the ring (up to ATM_FX_COMPACT_LOOP_MAX_REGION) by re-fetching it at the
+ * wrap. This legacy encoder and its fx_stream_validate preflight remain
+ * pinned-only: they emit and accept a region that fits the ring, which the
+ * streaming decoder still replays pinned and bit-for-bit identically. Emitting
+ * a large-region stream is the authoring adapter's job (--streaming-loops).
  */
 #ifndef FX_ENCODE_H
 #define FX_ENCODE_H

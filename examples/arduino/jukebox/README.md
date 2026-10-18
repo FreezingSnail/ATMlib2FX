@@ -5,6 +5,9 @@ uses the canonical PROGMEM (`ATM_SCORE_FMT_FULL`) assets rebuilt from the
 `examples/music_authoring/catalog.json` sources, so what you hear on hardware is
 byte-identical to what the authoring tools validate and preview.
 
+For the FX-chip variant that fits all 21 songs in one image (no `JUKEBOX_SET`
+split), see [`../jukebox_fx`](../jukebox_fx).
+
 ## Controls
 
 | Button       | Action                                        |

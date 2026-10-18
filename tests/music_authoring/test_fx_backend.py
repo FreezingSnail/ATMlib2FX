@@ -1014,6 +1014,133 @@ class LoopFramingTests(unittest.TestCase):
         self.assertEqual(ctx.exception.diagnostic.code, "LIMIT_EXCEEDED")
 
 
+class StreamingLoopTests(unittest.TestCase):
+    """Streaming loops for regions larger than the ring (ATMlib2FX-hlh.16).
+
+    The default stays finite-fallback (byte-stable); the ``streaming_loops``
+    capability switch exports the same 0xC1 framing so the decoder streams the
+    region through the ring.
+    """
+
+    def test_large_region_exports_when_switch_requested(self):
+        score = make_score(medium_loop_document())
+        stream, meta, warnings = fx.serialize_compact(
+            score, lower(score), streaming_loops=True
+        )
+        self.assertEqual(warnings, [])
+        self.assertEqual(stream[0], fx.FORMAT_MAGIC_LOOP)
+        self.assertTrue(meta["loop_exported"])
+        self.assertTrue(meta["loop_streaming"])
+        region = meta["loop_region_bytes"]
+        self.assertGreater(region, fx.RING_CAPACITY)
+        self.assertLessEqual(region, fx.LOOP_REGION_MAX)
+
+        # Same 0xC1 framing, decodable by the pinned test decoder; the region
+        # carries its restart record and a non-zero wrap gap.
+        loop_start_rel, passes, end = decode_loop_stream(stream)
+        self.assertEqual(end, len(stream))
+        self.assertEqual(loop_start_rel, meta["loop_start_rel"])
+        self.assertTrue(any(p["restart"] for p in passes))
+        self.assertGreater(passes[-1]["gap"], 0)
+
+    def test_default_still_falls_back_finite(self):
+        # Registering/relaxing the decoder must not change the default export:
+        # no capability flag, no streaming loop, byte-stable finite fallback.
+        score = make_score(medium_loop_document())
+        stream, meta, warnings = fx.serialize_compact(score, lower(score))
+        self.assertEqual(stream[0], fx.FORMAT_MAGIC)
+        self.assertFalse(meta["loop_exported"])
+        self.assertFalse(meta["loop_streaming"])
+        self.assertFalse(meta["streaming_loops_requested"])
+        self.assertIn("LOOP_NOT_EXPORTED", [w.code for w in warnings])
+        self.assertIn("--streaming-loops", warnings[0].suggestion)
+
+    def test_region_above_bound_is_rejected_with_pointer(self):
+        # A region above the decoder's streaming bound is a source-pointed
+        # admission error, never a partial/garbled export.
+        score = make_score(medium_loop_document())
+        original = fx.LOOP_REGION_MAX
+        fx.LOOP_REGION_MAX = 8
+        try:
+            with self.assertRaises(fx.FxAdmissionError) as ctx:
+                fx.serialize_compact(score, lower(score), streaming_loops=True)
+        finally:
+            fx.LOOP_REGION_MAX = original
+        diagnostic = ctx.exception.diagnostic
+        self.assertEqual(diagnostic.code, "LIMIT_EXCEEDED")
+        self.assertEqual(diagnostic.path, "/loop")
+        self.assertIn("streaming bound", diagnostic.message)
+
+    def test_small_region_path_is_unchanged(self):
+        # A ring-resident region still pins: same bytes with or without the switch.
+        score = make_score(tiny_loop_document())
+        plain, meta_plain, _w = fx.serialize_compact(score, lower(score))
+        switched, meta_switched, _w2 = fx.serialize_compact(
+            score, lower(score), streaming_loops=True
+        )
+        self.assertEqual(plain, switched)
+        self.assertEqual(plain, bytes.fromhex(LOOP_TINY_HEX))
+        self.assertFalse(meta_plain["loop_streaming"])
+        self.assertFalse(meta_switched["loop_streaming"])
+        self.assertTrue(meta_switched["loop_exported"])
+
+    def test_report_advertises_streaming_capability(self):
+        score = make_score(medium_loop_document())
+        result = fx.serialize(
+            score, lower(score), "expected", streaming_loops=True
+        )
+        capabilities = result.report["capabilities"]
+        self.assertTrue(capabilities["streaming_loops"])
+        self.assertEqual(
+            capabilities["streaming_loops_region_max"], fx.LOOP_REGION_MAX
+        )
+        self.assertTrue(result.report["stream"]["loop_streaming"])
+        # Default build reports the capability as not requested.
+        default = fx.serialize(score, lower(score), "expected")
+        self.assertFalse(default.report["capabilities"]["streaming_loops"])
+
+    def test_cli_streaming_loops_flag(self):
+        import contextlib
+        import io
+
+        out = os.path.join(LANE, "streaming-cli")
+        os.makedirs(out, exist_ok=True)
+        song = os.path.join(out, "song.json")
+        with open(song, "w", encoding="utf-8") as handle:
+            json.dump(medium_loop_document(), handle)
+
+        def run(argv):
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                code = cli_main(argv)
+            return code, json.loads(buffer.getvalue())
+
+        code, body = run(
+            [
+                "build", song, "--backend", "fx",
+                "--out", os.path.join(out, "assets"),
+                "--streaming-loops", "--json",
+            ]
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(body["ok"])
+        with open(os.path.join(out, "assets", "stream.bin"), "rb") as handle:
+            self.assertEqual(handle.read()[0], fx.FORMAT_MAGIC_LOOP)
+
+        code, body = run(
+            [
+                "build", song, "--backend", "fx",
+                "--out", os.path.join(out, "assets-default"), "--json",
+            ]
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(body["ok"])
+        with open(
+            os.path.join(out, "assets-default", "stream.bin"), "rb"
+        ) as handle:
+            self.assertEqual(handle.read()[0], fx.FORMAT_MAGIC)
+
+
 class CliTests(unittest.TestCase):
     def _run(self, argv):
         import contextlib

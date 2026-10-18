@@ -36,6 +36,10 @@ build/fx-port/image/fx_image \
 
 The workable example is [`examples/fx/music_graphics`](../../examples/fx/music_graphics/music_graphics.ino).
 
+The full jukebox consumer (all 21 catalog songs in one image) is
+[`examples/arduino/jukebox_fx`](../../examples/arduino/jukebox_fx); its generator
+is [`tools/music_authoring/fx_jukebox.py`](../../tools/music_authoring/fx_jukebox.py).
+
 ## Ownership
 
 * **The caller owns `FX::begin(page)` and the data page.** The packer computes

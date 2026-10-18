@@ -53,13 +53,20 @@ Admission policy:
   tick-0 commands for the looping channels) repeats the original's immediate
   same-tick second pass, including the effect-only pass when that tick has no
   note/volume ops.
-* **Resident loops only.**  The device pins the loop region and replays it in
-  place; a region larger than the ring would need a streaming wrap, which the
-  pinned contract rejects.  Such a score falls back to the finite ``0xC0``
-  stream (the arrangement once) and reports ``LOOP_NOT_EXPORTED`` with the
-  measured region size and ring, so nothing is silently truncated.  The ring is
-  configurable (``--ring`` / the ``ring`` argument, default 32, power of two,
-  max 256) for scores that exceed the default but still fit a larger ring.
+* **Streaming loops (ATMlib2FX-hlh.16).**  With the target-capability switch
+  ``streaming_loops=True`` (CLI ``--streaming-loops``) a loop region larger than
+  the ring (but no larger than ``LOOP_REGION_MAX`` bytes) is still exported with
+  the same ``0xC1`` framing: the device decoder streams the region through the
+  ring, the foreground re-fetching it from FX at the wrap so the timer never
+  sees END.  The switch is off by default; a firmware without the streaming
+  decoder cleanly rejects such a stream (never garbles it), so the fallback is
+  only produced when the capability is not requested.
+* **Resident loops by default.**  Without the switch, a region larger than the
+  ring falls back to the finite ``0xC0`` stream (the arrangement once) and
+  reports ``LOOP_NOT_EXPORTED`` with the measured region size and ring, so
+  nothing is silently truncated.  The ring is configurable (``--ring`` / the
+  ``ring`` argument, default 32, power of two, max 256) for scores that exceed
+  the default but still fit a larger ring.
 * **Limits.**  Each record must fit the ring; the gap varint is capped at 65535;
   the controlled foreground service window is preflighted exactly as finite v1.
 """
@@ -135,6 +142,10 @@ _TRAVERSAL_OPS = frozenset({"call", "call_repeat", "loop", "pattern_end", "retur
 
 # The decoder build flag that gates the loop extension (src/atm_fx_compact.h).
 LOOP_BUILD_FLAG = "ATM_FX_COMPACT_LOOP=1"
+
+# Largest loop region the streaming decoder accepts (src/atm_fx_compact.h
+# ATM_FX_COMPACT_LOOP_MAX_REGION): a region above this is a clean rejection.
+LOOP_REGION_MAX = 0xFFFF
 
 # Ring-overflow diagnostics.
 LOOP_NOT_EXPORTED = "LOOP_NOT_EXPORTED"
@@ -546,6 +557,41 @@ def _build_loop(score: Score, lowered: Lowered):
     return intro, loop_passes, loop_start_rel, region_bytes, total
 
 
+def _same_tick_chain_max(passes: list[_Pass]) -> int:
+    """Worst sum of consecutive same-tick records (loop gap 0 chains).
+
+    A loop record with gap 0 is applied on the same callback as the previous
+    one, so the whole chain must be resident at once: when the region streams,
+    a chain longer than the ring would underrun mid-tick.
+    """
+    best = 0
+    run = 0
+    for p in passes:
+        run += p.record_len
+        if run > best:
+            best = run
+        if p.gap != 0:
+            run = 0
+    return best
+
+
+def _cyclic_same_tick_chain_max(passes: list[_Pass]) -> int:
+    """``_same_tick_chain_max`` over the loop region's cyclic pass sequence."""
+    n = len(passes)
+    if n == 0:
+        return 0
+    best = 0
+    run = 0
+    for k in range(2 * n):  # doubled scan resolves a chain across the wrap
+        p = passes[k % n]
+        run += p.record_len
+        if run > best:
+            best = run
+        if p.gap != 0:
+            run = 0
+    return best
+
+
 def _loop_admission(
     score: Score,
     lowered: Lowered,
@@ -578,6 +624,20 @@ def _loop_admission(
                 f"loop gap of {p.gap} ticks exceeds the {GAP_VARINT_MAX}-tick varint maximum.",
                 "Add an event before the next pass or lower the tick rate.",
             )
+
+    # A same-tick chain (gap 0) is consumed on one callback and must be resident
+    # at once in both the pinned and the streaming path.
+    chain = max(_same_tick_chain_max(intro), _cyclic_same_tick_chain_max(loop_passes))
+    if chain > ring:
+        raise FxAdmissionError(
+            "DUE_GROUP_TOO_LARGE",
+            "/loop",
+            (
+                f"the loop's worst same-tick pass chain is {chain} bytes, larger "
+                f"than the {ring}-byte ring."
+            ),
+            "Split the same-tick events or build with a larger ring.",
+        )
 
     # The intro is streamed; the same foreground service-window preflight the
     # finite path applies must hold while it is consumed.
@@ -647,7 +707,19 @@ def _serialize_loop(intro: list[_Pass], loop_passes: list[_Pass], loop_start_rel
     return bytes(out)
 
 
-def _loop_fallback_diagnostic(region_bytes: int, ring: int, total: int) -> Diagnostic:
+def _loop_fallback_diagnostic(
+    region_bytes: int, ring: int, total: int, streaming_available: bool = False
+) -> Diagnostic:
+    suggestion = (
+        "Build with a larger --ring (power of two, max 256) if the cycle fits, "
+        "or shorten the loop / export the finite arrangement."
+    )
+    if streaming_available:
+        suggestion = (
+            "Build with --streaming-loops for a decoder that streams the region "
+            "through the ring (firmware gated by ATM_FX_COMPACT_LOOP), build with "
+            "a larger --ring if the cycle fits, or export the finite arrangement."
+        )
     return Diagnostic(
         LOOP_NOT_EXPORTED,
         "/loop",
@@ -657,22 +729,30 @@ def _loop_fallback_diagnostic(region_bytes: int, ring: int, total: int) -> Diagn
             f"loop is not representable. The finite 0xC0 arrangement is exported "
             f"once and stops at its end."
         ),
-        (
-            "Build with a larger --ring (power of two, max 256) if the cycle fits, "
-            "or shorten the loop / export the finite arrangement."
-        ),
+        suggestion,
         severity="warning",
     )
 
 
 def serialize_compact(
-    score: Score, lowered: Lowered, ring: int = RING_CAPACITY
+    score: Score,
+    lowered: Lowered,
+    ring: int = RING_CAPACITY,
+    streaming_loops: bool = False,
 ) -> tuple[bytes, dict, list[Diagnostic]]:
-    """Build the pinned byte stream plus packing metadata."""
+    """Build the pinned byte stream plus packing metadata.
+
+    ``streaming_loops`` is the target-capability switch (ATMlib2FX-hlh.16): when
+    true, a loop region up to ``LOOP_REGION_MAX`` bytes is exported for a
+    decoder that streams it through the ring (the device re-fetches the region
+    at the wrap). It is off by default so the finite fallback and its byte
+    stability are unchanged.
+    """
     _validate_ring(ring)
     diagnostics: list[Diagnostic] = []
 
     loop_exported = False
+    loop_streaming = False
     loop_meta: dict = {}
     if score.loop:
         built = _build_loop(score, lowered)
@@ -693,6 +773,35 @@ def serialize_compact(
             passes_count = len(loop_passes)
             payload_total = sum(p.payload_bytes for p in loop_passes)
             framing_total = sum(p.record_len for p in loop_passes)
+        elif streaming_loops:
+            if region_bytes > LOOP_REGION_MAX:
+                raise FxAdmissionError(
+                    "LIMIT_EXCEEDED",
+                    "/loop",
+                    (
+                        f"the loop region is {region_bytes} bytes, larger than the "
+                        f"{LOOP_REGION_MAX}-byte streaming bound; the decoder cannot "
+                        f"track a larger streamed region."
+                    ),
+                    "Shorten the arrangement or export the finite 0xC0 stream.",
+                )
+            _diag, metrics = _loop_admission(
+                score, lowered, intro, loop_passes, region_bytes, ring
+            )
+            stream = _serialize_loop(intro, loop_passes, loop_start_rel)
+            loop_exported = True
+            loop_streaming = True
+            passes_count = len(loop_passes)
+            payload_total = sum(p.payload_bytes for p in loop_passes)
+            framing_total = sum(p.record_len for p in loop_passes)
+        else:
+            diagnostics.append(
+                _loop_fallback_diagnostic(
+                    region_bytes, ring, lowered.total_ticks, streaming_available=True
+                )
+            )
+
+        if loop_exported:
             loop_meta = {
                 "loop_start_rel": loop_start_rel,
                 "loop_region_bytes": region_bytes,
@@ -701,11 +810,8 @@ def serialize_compact(
                 "loop_passes": len(loop_passes),
                 "intro_passes": len(intro),
                 "restart_mask": loop_passes[0].restart if loop_passes else 0,
+                "loop_streaming": loop_streaming,
             }
-        else:
-            diagnostics.append(
-                _loop_fallback_diagnostic(region_bytes, ring, lowered.total_ticks)
-            )
 
     if not loop_exported:
         passes = _collect_passes(score, lowered)
@@ -729,6 +835,8 @@ def serialize_compact(
         "ring_capacity": ring,
         "fetch_chunk": FETCH_CHUNK,
         "loop_exported": loop_exported,
+        "loop_streaming": loop_streaming,
+        "streaming_loops_requested": bool(streaming_loops),
         "magic": stream[0],
         "sha256": hashlib.sha256(stream).hexdigest(),
     }
@@ -809,6 +917,8 @@ def build_report(
             "finite_v1": True,
             "loops": True,
             "loops_require_build_flag": LOOP_BUILD_FLAG,
+            "streaming_loops": bool(metadata.get("streaming_loops_requested", False)),
+            "streaming_loops_region_max": LOOP_REGION_MAX,
             "effects": True,
             "commands": True,
             "sfx": False,
@@ -847,9 +957,15 @@ def build_report(
 
 
 def serialize(
-    score: Score, lowered: Lowered, out_dir: str, ring: int = RING_CAPACITY
+    score: Score,
+    lowered: Lowered,
+    out_dir: str,
+    ring: int = RING_CAPACITY,
+    streaming_loops: bool = False,
 ) -> BuildResult:
-    stream_bytes, metadata, diagnostics = serialize_compact(score, lowered, ring=ring)
+    stream_bytes, metadata, diagnostics = serialize_compact(
+        score, lowered, ring=ring, streaming_loops=streaming_loops
+    )
     header_bytes = render_header(score, stream_bytes)
     payload = build_review_payload(score, lowered, diagnostics=diagnostics)
     review_bytes = serialize_review(payload)
@@ -880,9 +996,15 @@ def write_outputs(out_dir: str, result: BuildResult) -> dict:
 
 
 def build(
-    score: Score, lowered: Lowered, out_dir: str, ring: int = RING_CAPACITY
+    score: Score,
+    lowered: Lowered,
+    out_dir: str,
+    ring: int = RING_CAPACITY,
+    streaming_loops: bool = False,
 ) -> tuple[BuildResult, dict]:
-    result = serialize(score, lowered, out_dir, ring=ring)
+    result = serialize(
+        score, lowered, out_dir, ring=ring, streaming_loops=streaming_loops
+    )
     artifacts = write_outputs(out_dir, result)
     return result, artifacts
 

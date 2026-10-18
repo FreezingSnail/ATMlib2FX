@@ -133,10 +133,16 @@ def cmd_build(args: argparse.Namespace) -> int:
             from . import fx_backend
 
             ring = getattr(args, "ring", None)
+            streaming_loops = bool(getattr(args, "streaming_loops", False))
             if ring is None:
-                result, artifacts = fx_backend.build(score, lowered, args.out)
+                result, artifacts = fx_backend.build(
+                    score, lowered, args.out, streaming_loops=streaming_loops
+                )
             else:
-                result, artifacts = fx_backend.build(score, lowered, args.out, ring=ring)
+                result, artifacts = fx_backend.build(
+                    score, lowered, args.out, ring=ring,
+                    streaming_loops=streaming_loops,
+                )
             warnings = list(result.diagnostics)
         else:
             result, artifacts = build_backend(score, lowered, args.out)
@@ -232,6 +238,17 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "FX admission ring in bytes (power of two, 5..256; default 32). "
             "Ignored by the progmem backend."
+        ),
+    )
+    build.add_argument(
+        "--streaming-loops",
+        action="store_true",
+        dest="streaming_loops",
+        help=(
+            "Advertise a decoder that streams loop regions larger than the ring "
+            "(ATMlib2FX-hlh.16). Off by default: a larger region then falls back "
+            "to the finite 0xC0 stream with LOOP_NOT_EXPORTED. Ignored by the "
+            "progmem backend."
         ),
     )
     build.add_argument("--json", action="store_true", help="emit JSON (always on)")

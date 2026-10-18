@@ -521,6 +521,9 @@ def capability_summary() -> dict:
         "advertises": {
             "loops": True,
             "loops_require_build_flag": "ATM_FX_COMPACT_LOOP=1",
+            "streaming_loops": True,
+            "streaming_loops_option": "--streaming-loops",
+            "streaming_loops_region_max": 0xFFFF,
             "effects": True,
             "commands": True,
             "sfx": False,
@@ -541,6 +544,7 @@ def capability_summary() -> dict:
         "fx_stream_export",
         "finite_v1_fx",
         "fx_loops",
+        "fx_streaming_loops",
         "fx_effects",
         "fx_commands",
         "packing_metadata",

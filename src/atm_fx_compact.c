@@ -17,6 +17,13 @@
 
 #define ATM_FX_COMPACT_MASK (ATM_FX_COMPACT_RING - 1)
 
+#if ATM_FX_COMPACT_LOOP && ATM_FX_COMPACT_LOOP_STREAMING
+/* Compile-time-folded predicate: true only in a streaming-enabled loop build. */
+#define ATM_FX_COMPACT_STREAMING (atm_fx_compact_state.loop_streaming)
+#else
+#define ATM_FX_COMPACT_STREAMING (0)
+#endif
+
 /* Replacement/pause critical sections. The timer consumer and the foreground
  * control API share the ring descriptor; the control API runs its mutation
  * between complete ticks. On AVR use an interrupt-restoring atomic block; on a
@@ -168,6 +175,21 @@ static void atm_fx_compact_fill(void)
 		if (space == 0) {
 			break;
 		}
+#if ATM_FX_COMPACT_LOOP
+		if (ATM_FX_COMPACT_STREAMING &&
+		    atm_fx_compact_state.next_offset >=
+				atm_fx_compact_state.stream_end - 1) {
+			/* Streaming loop (region larger than the ring): the END
+			 * byte is the loop boundary and is consumed here, in the
+			 * foreground, so the timer only ever sees loop records.
+			 * Re-point the producer at the loop start and keep
+			 * fetching; the ring write order is unchanged, so the
+			 * consumer sees the same record sequence as the pinned
+			 * wrap (the restart pass stays in its original tick). */
+			atm_fx_compact_state.next_offset =
+				atm_fx_compact_state.loop_start;
+		}
+#endif
 		if (atm_fx_compact_state.next_offset >= atm_fx_compact_state.stream_end) {
 			break;
 		}
@@ -181,10 +203,23 @@ static void atm_fx_compact_fill(void)
 		if (n > ATM_FX_COMPACT_CHUNK) {
 			n = ATM_FX_COMPACT_CHUNK;
 		}
-		const uint32_t rem =
-			atm_fx_compact_state.stream_end - atm_fx_compact_state.next_offset;
+		uint32_t rem;
+#if ATM_FX_COMPACT_LOOP
+		if (ATM_FX_COMPACT_STREAMING) {
+			/* Never fetch the trailing END byte into the ring. */
+			rem = (atm_fx_compact_state.stream_end - 1) -
+				atm_fx_compact_state.next_offset;
+		} else
+#endif
+		{
+			rem = atm_fx_compact_state.stream_end -
+				atm_fx_compact_state.next_offset;
+		}
 		if ((uint32_t)n > rem) {
 			n = (uint8_t)rem;
+		}
+		if (n == 0) {
+			break;
 		}
 
 		atm_fx_compact_fetch(atm_fx_compact_state.next_offset,
@@ -258,6 +293,7 @@ static void atm_fx_compact_tick_handler(uint8_t cb_index, void *priv)
 		}
 		if (atm_fx_compact_state.loopable &&
 		    !atm_fx_compact_state.loop_pinned &&
+		    !ATM_FX_COMPACT_STREAMING &&
 		    atm_fx_compact_state.head_offset ==
 				atm_fx_compact_state.loop_start) {
 			/* Whole loop region is resident. Pin it: stop fetching
@@ -286,7 +322,8 @@ static void atm_fx_compact_tick_handler(uint8_t cb_index, void *priv)
 
 		if (rec_len == 0) {
 #if ATM_FX_COMPACT_LOOP
-			if (atm_fx_compact_state.loopable) {
+			if (atm_fx_compact_state.loopable &&
+			    !ATM_FX_COMPACT_STREAMING) {
 				/* END is the loop boundary: replay the loop
 				 * region in this same tick. */
 				if (wraps++ != 0) {
@@ -299,6 +336,15 @@ static void atm_fx_compact_tick_handler(uint8_t cb_index, void *priv)
 				atm_fx_compact_state.loop_remaining =
 					atm_fx_compact_state.loop_bytes;
 				continue;
+			}
+			if (atm_fx_compact_state.loopable &&
+			    ATM_FX_COMPACT_STREAMING) {
+				/* Streaming loops swallow END in the foreground
+				 * producer; END reaching the timer is malformed
+				 * (never a silent wrap to a stale ring base). */
+				atm_fx_compact_state.error = 1;
+				atm_fx_compact_stop();
+				return;
 			}
 #endif
 			/* END: finite completion. */
@@ -625,6 +671,9 @@ void atm_fx_compact_play(uint32_t offset, uint32_t length)
 	uint32_t lstart = 0;
 	uint16_t lbytes = 0;
 	uint8_t loopable = 0;
+#if ATM_FX_COMPACT_LOOP_STREAMING
+	uint8_t loop_streaming = 0;
+#endif
 	uint8_t bad = 0;
 	{
 		uint8_t magic = 0;
@@ -638,14 +687,32 @@ void atm_fx_compact_play(uint32_t offset, uint32_t length)
 				const uint32_t ls = (uint32_t)hdr[1] |
 					((uint32_t)hdr[2] << 8) |
 					((uint32_t)hdr[3] << 16);
-				if (ls < 4 || ls > length - 2 ||
-				    (length - 1) - ls == 0 ||
-				    (uint32_t)(length - 1) - ls > ATM_FX_COMPACT_RING) {
+				const uint32_t region =
+					(uint32_t)(length - 1) - ls;
+				if (ls < 4 || ls > length - 2 || region == 0) {
 					bad = 1;
-				} else {
+				} else if (region <= ATM_FX_COMPACT_RING) {
+					/* Pinned path: the whole region is
+					 * resident and replayed in place. */
 					loopable = 1;
+#if ATM_FX_COMPACT_LOOP_STREAMING
+				} else if (region <=
+					   ATM_FX_COMPACT_LOOP_MAX_REGION) {
+					/* Streaming path: the region is
+					 * larger than the ring; the foreground
+					 * producer re-fetches it at the wrap. */
+					loopable = 1;
+					loop_streaming = 1;
+#endif
+				} else {
+					/* Beyond the documented bound: clean
+					 * format rejection, never a partial or
+					 * garbled replay. */
+					bad = 1;
+				}
+				if (loopable) {
 					lstart = offset + ls;
-					lbytes = (uint16_t)((length - 1) - ls);
+					lbytes = (uint16_t)region;
 					next_offset = offset + 4;
 				}
 			}
@@ -670,6 +737,9 @@ void atm_fx_compact_play(uint32_t offset, uint32_t length)
 		atm_fx_compact_state.loop_start = lstart;
 		atm_fx_compact_state.loop_bytes = lbytes;
 		atm_fx_compact_state.loop_pinned = 0;
+#if ATM_FX_COMPACT_LOOP_STREAMING
+		atm_fx_compact_state.loop_streaming = loop_streaming;
+#endif
 		atm_fx_compact_state.loop_base = 0;
 		atm_fx_compact_state.loop_remaining = 0;
 #endif
