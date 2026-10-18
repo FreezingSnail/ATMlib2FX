@@ -444,4 +444,22 @@ start_loop:
 #define ATM_FX_COMPACT_IMPL
 #include "atm_fx_compact.c"
 #undef ATM_FX_COMPACT_IMPL
+
+/* Compact-backend score control (ATMlib2FX-hlh.9): the public pause/resume API
+ * delegates to the compact player so the legacy contract (pause preserves a
+ * resumable position and mutes; resume re-arms) holds for this backend too.
+ * The legacy definitions above are compiled out for FX stream backends. */
+uint8_t atm_synth_get_score_paused(void)
+{
+	return atm_fx_compact_is_paused();
+}
+
+void atm_synth_set_score_paused(const uint8_t paused)
+{
+	if (paused) {
+		atm_fx_compact_pause();
+	} else {
+		atm_fx_compact_resume();
+	}
+}
 #endif

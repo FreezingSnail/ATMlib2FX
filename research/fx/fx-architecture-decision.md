@@ -378,3 +378,128 @@ Residual disclosures: engine flash is +29 B versus the original interpreter;
 SPI transfer time for refills is assumed, not measured; all `build/fx-port/`
 evidence and the selected decoding sources were workspace-only and are preserved
 by the commit accompanying this decision.
+
+## hlh.9: pause/replacement/arming + independent-tempo SFX (2026-10-17)
+
+Decision bead: `ATMlib2FX-hlh.9`. This section implements and measures contract
+items 6–8 of the hlh.6 pinned contract: start/prefill, pause/stop/replacement,
+and the SFX overlay. It does **not** touch loop support (hlh.8). All evidence is
+in the new lane `build/fx-port/control/`; the retained `build/fx-port/compact/`
+lane and its hlh.5 ELFs were not rebuilt (retained `avr-compact` ELF is still
+`177dec70b66c1bac…`) and the original reference trace was re-read, never
+regenerated.
+
+Source identity (SHA-256 in `build/fx-port/control/source-hashes.txt`): the
+implementation is `src/atm_fx_compact.{h,c}` (pause/prefill/atomic-replacement
+and the PROGMEM SFX overlay) plus the guarded `ATM_HAS_FX_COMPACT` block in
+`src/atm_synth.c`; `src/cmd_parse.c` is unchanged. Everything is gated by
+`ATM_HAS_FX_COMPACT` (default 0) and the overlay by `ATM_FX_COMPACT_SFX`
+(default 0).
+
+### What was implemented and proven
+
+* **Prefill before arm.** `play` resets the descriptor, runs the foreground
+  refill with sample interrupts enabled and the timer still unregistered, then
+  arms. `control_test` asserts a resident record immediately after `play` and
+  `underruns == 0` on the first due tick.
+* **Pause/resume.** Position, gap, channel and effect state are preserved; owned
+  voice volumes are saved and muted on pause and restored on resume; the timer
+  is unregistered on pause and re-armed on resume. The host test shows a
+  paused/resumed run reaches the next note at the **same music-tick count** as a
+  control run (no drift) and that 4000 base events while paused advance nothing.
+  `atm_synth_set_score_paused`/`_get_score_paused` delegate to it for the
+  compact backend.
+* **Stop and atomic replacement.** `stop` unregisters and mutes the owned
+  voices. `play` runs inside `ATOMIC_BLOCK(ATOMIC_RESTORESTATE)` on AVR:
+  stop/mute, reset, channel re-init, discard unread bytes, prefill, arm. The host
+  test shows the ring after replacement holds only the new track and the first
+  due tick applies the new track's record with the channel re-initialized (no
+  mixed state).
+* **SFX overlay.** A second compact record stream stored in **PROGMEM** is read
+  by the timer directly (no FX SPI, no second ring, no second queue) on tick
+  callback 1 at its own tempo. It borrows one music voice (save + zero +
+  redirect the music channel's effects into the saved shadow), keeps music
+  advancing behind it, and restores the borrowed voice on natural stop, explicit
+  stop and replacement. The borrow/restore and single-overlay replacement are
+  asserted in `control_test`.
+
+Ownership/API surface is documented at the top of `src/atm_fx_compact.h`
+(caller owns the FX page and stream lifetimes; library owns the ring, channels
+and the borrowed SFX voice; service runs in the foreground between complete SPI
+transactions).
+
+### Trace equivalence
+
+`build/fx-port/control/sfx_trace_main` drives the device decoder (music + SFX)
+on the host and compares against `reference_trace_music_sfx.csv`
+(SHA-256 `7d3ba7e159cfb6328cde7ddc3e13e8a4eecefa357e6f0f6c477b512f229827a1`),
+dropping only the traversal-only columns `cN_ps`/`cN_delay`:
+
+* 512 `M` rows + 23 `S` rows, **MATCH** (trace SHA-256 `69b0c5efb8483dcf…`,
+  `build/fx-port/control/sfx_equivalence.txt`).
+
+So the borrowed-channel overlay, the `0x70→0x30` mute flip, the independent
+22.22 Hz SFX tempo and the music-advances-behind behaviour all reproduce the
+original reference exactly.
+
+### Storage decision (SFX)
+
+**Selected: PROGMEM compact SFX.** The SFX fixture (`sfx1`) encodes to a 21-byte
+compact stream in flash, read directly with `pgm_read_byte`; it needs no FX
+read, no ring and no second queue. Per-class costs:
+
+| SFX storage class | Asset | Runtime need | Status |
+| --- | ---: | --- | --- |
+| **PROGMEM compact (selected)** | **21 B flash** | shared compact reader + `pgm_read_byte`; no ring, no SPI, no queue | **measured** |
+| small PROGMEM SFX via legacy MINIMAL_MONO traversal | 10 B flash | retains the traversal interpreter the FX backend removes | estimated (hlh.1: original SFX adds 286 B program incl. 10 B asset, 45 B SRAM) — not built here |
+| FX SFX (compact records in the FX data section) | 21 B on FX | second ring (≥32 B SRAM) + foreground SPI service + duplicate ownership | estimated/unmeasured — rejected (mandatory second queue) |
+
+The measured cost of the whole SFX feature (not the storage-class difference) is
+the `mode 4` build over the music-only `mode 3` build in the same shell:
+
+| variant | program | .text | .data | .bss | SRAM | SFX asset | ELF sha (head) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| compact (music only, hlh.9) | 7848 | 7810 | 38 | 1319 | 1357 | 0 | `f7ef2855e869da98` |
+| control (+ SFX) | 9152 | 9114 | 38 | 1363 | 1401 | 21 | `956b41dcd4ae4857` |
+| control_dg (+ SFX, DIAG) | 10292 | 10250 | 42 | 1390 | 1432 | 21 | `e5521783e776cafb` |
+
+Whole-image deltas for SFX: **+1304 B program** (includes the 21 B asset) and
+**+44 B SRAM** (`atm_fx_compact_state` 51 → 94 B; SFX symbols
+`atm_fx_compact_sfx_walk` 386 B, `atm_fx_compact_sfx_tick_handler` 276 B,
+`atm_fx_compact_stop_sfx` 100 B). LTO re-attributed some shared code
+(`apply_cmd` appears standalone at 460 B, `main` grows 296 B), so the whole-image
+number is the honest one; the SFX-only symbol sum is ~762 B plus the reader.
+Because it is gated by `ATM_FX_COMPACT_SFX` (default 0), music-only builds pay
+none of it. The pause/prefill/atomic/stop-mute work costs the compact build
+**+98 B program / +5 B SRAM** over the retained hlh.5 `compact` build
+(7750/1352 → 7848/1357).
+
+### Device verification (absim)
+
+`build/fx-port/control/avr-control_dg` (12 s run, 52 fps, FX address above
+`0x010000`, one foreground service per frame):
+
+```
+FCSFXDIAG borrow=2 sfx_ticks=23 restore_ok=1 start=56 stop=105 underruns=0 error=0 ticks=493 frames=520
+min_stack=0x0aaf bss_end=0x0698 headroom_bytes=1047
+```
+
+The SFX borrows `OSC_CH_TWO`, runs exactly 23 ticks (the reference count) at its
+own tempo, restores the borrowed voice, and the music advances 49 ticks behind
+it with zero underruns — the reference-trace semantics reproduced on device.
+
+### Default build unchanged
+
+The lane rebuilds the hlh.1 music fixture (`FP_AUDIO=1`, no FX macros) and
+compares `.text` against the retained hlh.1 `avr-music` ELF: **byte-identical**
+(`build/fx-port/control/default_regression.txt`). Default library builds are
+unaffected; every change lives behind `ATM_HAS_FX_COMPACT` / `ATM_FX_COMPACT_SFX`.
+
+### Not claimed
+
+Loop support (hlh.8) is untouched. The SFX converter covers the `song01_sfx`
+`sfx1` MINIMAL_MONO fixture shape only; a general host converter/admission is
+hlh.7/hlh.10. The SFX asset is device-read directly, so the SFX must fit the
+PROGMEM record framing; large or streaming SFX is out of scope. Game fit, save
+integration and general packing remain hlh.10/hlh.11.
+
