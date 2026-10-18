@@ -46,6 +46,13 @@ values. The host shim (`avr_shim/avr/pgmspace.h`) only maps `PROGMEM` /
 Regenerate with `./run-trace.sh` (writes these files in place; it verifies two
 runs are byte-identical). The host binary is written to `build/fx-port/trace/`.
 
+## Regeneration note (ATMlib2FX-mgd)
+
+music_sfx reference regenerated after ATMlib2FX-mgd: trigger_note() note-off returns after osc.vol=0 instead of falling through to trigger_both; sfx1 NOTE_OFF at S,12 -> 36 vol cells only (S,12-22 and M,89-113 c2_vol); music/basic traces byte-identical.
+
+Only the `music_sfx` reference moved (`7d3ba7e1…27a1` → `10ec84de…083f`); the
+`music` reference and the `basic` authoring golden are unchanged.
+
 ## CSV schema
 
 One row per event. `event` is `M` (music tick) or `S` (SFX tick).

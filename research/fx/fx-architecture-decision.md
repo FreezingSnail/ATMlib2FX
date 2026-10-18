@@ -245,6 +245,12 @@ retained ELF hashes were re-read for this decision, without git commands:
 | `fx-stream/spike_stream.bin` | `62cba4f0faefcff8f605690c278b7bff466fa73d3a79f3aa3dfc52b4c91a0e75` |
 | `fx-stream/spike_stream_t255.bin` | `072d0f1da9c4d4db2560588c52812a251fa318f88150c0c6ac9ee269b30d3090` |
 
+Refreshed 2026-10-18 for the ATMlib2FX-mgd evidence update:
+`avr-music/footprint_baseline.ino.elf` is now
+`dd14545861c96924dabc17c26cbd3496a06ba697302715ee874fca8598b46403` (the
+hlh.1-era artifact above is preserved at `build/fx-port/avr-music-hlh1-retained/`;
+cumulative `.text` `+28 B`, `.bss` `+1 B`; see `output-ATMlib2FX-mgd.md`).
+
 Current decoder source hashes, recorded at decision time, are not a claim that
 all historical binaries were rebuilt from today's files:
 
@@ -432,10 +438,12 @@ transactions).
 
 `build/fx-port/control/sfx_trace_main` drives the device decoder (music + SFX)
 on the host and compares against `reference_trace_music_sfx.csv`
-(SHA-256 `7d3ba7e159cfb6328cde7ddc3e13e8a4eecefa357e6f0f6c477b512f229827a1`),
-dropping only the traversal-only columns `cN_ps`/`cN_delay`:
+(SHA-256 `10ec84de82eb11d68bd7ccd56f328f9414c2eb44e23b80b4b9e20506f184083f`;
+regenerated for ATMlib2FX-mgd, see
+`research/fx/footprint_baseline/trace/README.md`), dropping only the
+traversal-only columns `cN_ps`/`cN_delay`:
 
-* 512 `M` rows + 23 `S` rows, **MATCH** (trace SHA-256 `69b0c5efb8483dcf…`,
+* 512 `M` rows + 23 `S` rows, **MATCH** (trace SHA-256 `0a9aa641d348254a…`,
   `build/fx-port/control/sfx_equivalence.txt`).
 
 So the borrowed-channel overlay, the `0x70→0x30` mute flip, the independent
@@ -491,9 +499,12 @@ it with zero underruns — the reference-trace semantics reproduced on device.
 ### Default build unchanged
 
 The lane rebuilds the hlh.1 music fixture (`FP_AUDIO=1`, no FX macros) and
-compares `.text` against the retained hlh.1 `avr-music` ELF: **byte-identical**
+compares `.text` against the retained `avr-music` baseline ELF (refreshed
+2026-10-18 for ATMlib2FX-mgd: cumulative `.text` `+28 B`, `.bss` `+1 B` over the
+hlh.1-era artifact; see `output-ATMlib2FX-mgd.md`): **byte-identical**
 (`build/fx-port/control/default_regression.txt`). Default library builds are
-unaffected; every change lives behind `ATM_HAS_FX_COMPACT` / `ATM_FX_COMPACT_SFX`.
+unaffected by the FX layers; every change lives behind `ATM_HAS_FX_COMPACT` /
+`ATM_FX_COMPACT_SFX`.
 
 ### Not claimed
 

@@ -39,14 +39,14 @@ Files: `schemas/atmlib-score-v1.schema.json`, `tools/atm-music`,
 `tools/music_authoring/preview/{absim_audio_harness.cpp,build-harness.sh}`,
 `tests/music_authoring/{test_score,test_progmem,test_render}.py`.
 
-## Engine fact honored: NOTE_OFF does not silence
+## Engine behavior: note-off silences; gates still set volume explicitly
 
-`src/cmd_parse.c:trigger_note()` writes `vol = 0` for note 0 and then **falls
-through to `trigger_both`, which restores `vol = ch->vol`**. So a raw NOTE_OFF
-does not gate a channel whose volume is nonzero. The compiler therefore lowers
-each gate with an **explicit `SET_VOLUME(0)`**, and each new note is preceded by
-`SET_VOLUME(instrument.volume)` (+ `SET_MOD(duty)` on pulse). This is verified
-against the original engine by the trace below; no `src/` behavior is changed.
+`src/cmd_parse.c:trigger_note()` silences on note 0 (`osc.vol = 0`, then
+`return`; fixed by ATMlib2FX-mgd, change pending commit) and leaves `osc.mod`
+and the channel volume untouched. The compiler still lowers each gate with an
+**explicit `SET_VOLUME(0)`**, and each new note is preceded by
+`SET_VOLUME(instrument.volume)` (+ `SET_MOD(duty)` on pulse), so generated
+programs do not depend on the note-off path.
 
 Timing: `NOTE; DELAY(D); SET_VOLUME(0)` mutes exactly at tick `start+D` (the
 engine's `process_channel` loop decrements one tick per callback). Channel 0's

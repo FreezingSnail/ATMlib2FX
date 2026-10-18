@@ -39,13 +39,13 @@ Do not require a model to generate C macros, offsets, bytecode or packed flags.
 | An absim runner can execute compiled AVR images with FX data | `research/fx/fx_stream_spike/trace/absim_fx_harness.cpp` | Reuse the integration approach for preview research. WAV capture has not been demonstrated by this plan. |
 | The FX spike is behaviorally useful but has no demonstrated engine memory saving | `research/fx/fx-footprint-results.md`, section 10 | FX encoding and public runtime contracts remain owned by `ATMlib2FX-hlh.2`. |
 
-One source discrepancy needs explicit coverage: in `cmd_parse.c:trigger_note`,
-the note-zero branch writes zero volume and then appears to fall through to
-`trigger_both`, which restores the channel volume. Do not assume raw NOTE_OFF
-produces silence. Authoring gate/rest lowering should explicitly set volume to
-zero and restore the authored volume for the next note. Verify actual traces
-and audio before claiming this works. Any engine behavior fix belongs in its
-own bead, with original-equivalence implications recorded.
+Note-off semantics are settled: in `cmd_parse.c:trigger_note`, the note-zero
+branch sets `osc.vol = 0` and returns, so a raw NOTE_OFF silences the channel;
+it leaves `osc.mod` and the channel volume untouched, so the next note restores
+the authored volume. Fixed by ATMlib2FX-mgd (the `src/cmd_parse.c` change is in
+the working tree pending commit). Gate/rest lowering may use NOTE_OFF, or
+`SET_VOLUME(0)` when the channel volume itself must be lowered. Verify actual
+traces and audio before claiming either.
 
 ## First version: a finite, conservative musical subset
 

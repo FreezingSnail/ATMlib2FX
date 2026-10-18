@@ -8,7 +8,10 @@ static void trigger_note(const uint8_t note, struct atm_channel_state *ch)
 {
 	ch->dst_osc_params->phase_increment = note_index_2_phase_inc(note + ch->trans_config);
 	if (!note) {
+		/* Note off / note cut: silence the channel. Keep the current mod
+		 * so an in-flight mod slide and the last SET_MOD value are preserved. */
 		ch->dst_osc_params->vol = 0;
+		return;
 	} else {
 #if ATM_HAS_FX_SLIDE
 		if (!ch->vf_slide.slide_amount) {

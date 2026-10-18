@@ -34,7 +34,7 @@ describe anything the current `src/` does not do.
 | --- | --- | --- | --- |
 | Voices | 4 channels, waveforms chosen at compile time (pulse, square, saw, noise) | 3 pulse oscillators with programmable duty + 1 noise; no saw | `src/osc.c`, `src/osc.h` |
 | Pitch | note names are *not* concert pitch (≈ +1 octave, ≈ 80¢ flat) | note indices 1-63 are **concert-pitch** C2-D7 | `src/atm_cmd_constants.h`, `src/atm_synth.c` `noteTable` |
-| Note off | `0x00` silences | `ATM_CMD_I_NOTE_OFF` (= 0) restores the channel volume; it is **not** a mute | `src/cmd_parse.c` `trigger_note` |
+| Note off | `0x00` silences | `ATM_CMD_I_NOTE_OFF` (= 0) silences the channel: `trigger_note` sets `osc.vol = 0` and returns, leaving `osc.mod` untouched | `src/cmd_parse.c` `trigger_note` |
 | Looping | per-track self-`GOTO(track)` | per-channel `SET_LOOP_PATTERN`; a `CALL` to the current pattern is ignored | `src/cmd_parse.c`, `src/atm_synth.c` |
 | Loop seam | self-loop needed to remove a 1-tick hop | `130c9ca` restarts every looping channel in the **same callback**: no extra silent tick once all channels stop together | `src/atm_synth.c` `atm_synth_score_tick_handler` |
 | Repeat count | `REPEAT(n,t)` runs `n+1` times | `ATM_CMD_M_CALL_REPEAT(t,n)` runs `n` times total | `src/atm_cmd_constants.h` macro, `src/cmd_parse.c` |
@@ -135,13 +135,13 @@ effective_bpm       = effective_tick_rate * 60 / ticks_per_beat
   (C2) and index 34 ≈ 440.0 Hz (A4). Do not apply the T-arg "octave up / 80¢
   flat" assumption.
 - Sharps use a trailing underscore: `ATM_CMD_I_NOTE_F2_` is F#2. There is no
-  `F#` spelling, no flat form, and no dedicated mute macro (index 0 is
-  `ATM_CMD_I_NOTE_OFF`, which does not mute — see below).
-- **⚠ differs:** a raw `ATM_CMD_I_NOTE_OFF` (or index 0) runs the note-zero
-  branch of `trigger_note`, which sets the oscillator volume to 0 and then falls
-  through to `trigger_both`, restoring the channel volume. It is **not** a
-  reliable mute. Use `ATM_CMD_M_SET_VOLUME(0)` for silence. See the same caveat
-  in `docs/music-authoring-interface.md`.
+  `F#` spelling, no flat form; index 0 is the mute, `ATM_CMD_I_NOTE_OFF` (see
+  below).
+- A raw `ATM_CMD_I_NOTE_OFF` (or index 0) runs the note-zero branch of
+  `trigger_note`, which sets the oscillator volume to 0 and returns. It silences
+  the channel and leaves `osc.mod` untouched, so an in-flight mod slide and the
+  last `SET_MOD` value survive the note-off. A later note still restores the
+  channel volume. See `docs/music-authoring-interface.md`.
 - On the noise channel (index 3) the token is the **LFSR seed**, not a pitch
   (`src/osc.c` uses the channel's phase word directly as the noise shift
   register). Different tokens give different noise colors; index 0 gives an
@@ -218,10 +218,10 @@ ATM_CMD_I_NOTE_D4, ATM_CMD_M_DELAY_TICKS(64),
 - **Invalid note spelling.** `F#5`, flats, MIDI numbers, or a negative macro
   argument without a cast. Use `ATM_CMD_I_NOTE_F5_`,
   `ATM_CMD_M_SLIDE_VOL_ON((uint8_t)-2)`.
-- **Raw note-off as a mute.** Use `ATM_CMD_M_SET_VOLUME(0)` (section 4).
-- **Relying on note cut / raw note 0 to silence.** The note-zero path restores
-  volume, so a hardware "silent" step is not guaranteed. Lower the volume
-  explicitly.
+- **Assuming note-off zeroes the channel volume.** `NOTE_OFF` silences the
+  oscillator but preserves `ch->vol`, so the next note and any volume slides
+  still use the authored level. Use `ATM_CMD_M_SET_VOLUME(0)` when the channel
+  volume itself must drop (section 4).
 - **Stacking a slide and an LFO of the same kind.** Slides share one slot per
   channel and LFOs share another (`src/cmd_parse.c` `process_np_cmd`); starting
   one replaces the other.
@@ -449,7 +449,7 @@ setup plus one long note per bar.
 - [ ] Unused channels point at a 1-byte `_PATTERN_END` (or JSON pattern 0).
 - [ ] Call depth ≤ 3 (`ATM_PATTERN_STACK_DEPTH`).
 - [ ] Every `note + transposition` is within 1-63.
-- [ ] No raw note-off used as a mute (use `SET_VOLUME(0)`).
+- [ ] Note cuts are explicit: `NOTE_OFF` silences the oscillator; `SET_VOLUME(0)` also clears the channel volume.
 - [ ] Byte budget: `7 + 2*patterns` header plus all program bytes ≤ budget.
 - [ ] In-game cues using SFX: music volume scaled ~60 % with slides scaled too.
 - [ ] Validated and rendered with `tools/atm-music` (see the

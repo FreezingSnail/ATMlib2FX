@@ -191,11 +191,11 @@ Committed fixtures (schema and contract in `trace/README.md`):
   started at tick 64, run to natural stop (512 `M` + 23 `S` rows).
 - `trace/reference/checksums.txt`.
 
-Checksums (sha256):
+Checksums (sha256; `music_sfx` regenerated for ATMlib2FX-mgd, `music` unchanged):
 
 ```
 music     87e55846b3abaf214a8cb68355a8db52a431e7b75ae7b0ee0b7b7c3447e5d01d
-music_sfx 7d3ba7e159cfb6328cde7ddc3e13e8a4eecefa357e6f0f6c477b512f229827a1
+music_sfx 10ec84de82eb11d68bd7ccd56f328f9414c2eb44e23b80b4b9e20506f184083f
 ```
 
 Two consecutive runs are byte-identical (the script asserts this). Contract:
@@ -491,7 +491,8 @@ claimed.
 - Candidate ELFs (sha256): `shell_fx` `879c9487…9115`, `fx_gfx` `d3c8e417…c86d`,
   `fx_stream` `422e683f…bac6`, `fx_diag` `d98eb354…45bb`.
 - Baseline ELFs (sha256, re-measured): `shell` `365161da…0f93`, `music`
-  `9ed998e7…e1fb`, `music_sfx` `ebfa4c0e…d56d`.
+  `9ed998e7…e1fb` (refreshed 2026-10-18 to `dd145458…b403`; see
+  `output-ATMlib2FX-mgd.md`), `music_sfx` `ebfa4c0e…d56d`.
 - Streams: authored `62cba4f0…0e75`, tempo-255 `072d0f1d…3090`; fxdata
   `fa109a02…d593`.
 - Exact commands: `research/fx/tools/measure-footprint.sh` (baseline, re-verified),
