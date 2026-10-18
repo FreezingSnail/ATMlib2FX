@@ -48,6 +48,14 @@ PROGMEM assets pending FX backend selection. Musical improvement was assessed
 from score harmony, voice placement and phrasing; automated checks establish
 playback correctness, not listener preference or physical speaker sound.
 
+Effects and automation: the additive per-pattern `effects` and `commands` keys
+(engine arpeggio, note cut, LFO, slide, glissando and noise retrigger; tempo,
+transposition, volume/duty and cue commands) are available for PROGMEM scores
+and are drawn in the review viewer. The finite-v1 FX adapter rejects any score
+that declares them, so an effect passage stays PROGMEM. See the
+[authoring guide](../../docs/music-authoring-guide.md) and the
+[composition guidance](../../docs/skills/atm-music/references/composition.md).
+
 Regenerate a cue using the commands in the [authoring guide](../../docs/music-authoring-guide.md),
 then rebuild the library with:
 

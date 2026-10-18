@@ -42,7 +42,9 @@ song assets. Asset sizes describe songs only, not engine or whole-game costs.
 All tracks use the three monophonic pulse voices and noise voice. Timbre and
 dynamic changes use fixed instrument presets on individual notes; echoes and
 arpeggios are explicitly authored notes. These scores use the supported JSON v1
-subset, which does not expose engine slides, vibrato, tremolo or effect arpeggios.
+subset and do not use its optional engine `effects`/`commands` keys (available
+for PROGMEM scores but rejected by the finite-v1 FX adapter); arpeggios are
+authored as note events.
 Noise note tokens control noise behavior, rather than selecting sampled drums.
 
 All cues use a real 100 Hz clock, with distinct ticks-per-beat values. Tempos are

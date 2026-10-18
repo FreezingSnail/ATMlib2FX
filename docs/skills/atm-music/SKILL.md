@@ -30,17 +30,29 @@ of where this skill is installed. Follow the repository's Beads workflow.
   `pulse2`, and `noise`; each is monophonic. Use natural/sharp note strings
   C2–D7. Noise tokens select noise behavior, not pitched samples.
 - Instruments are fixed volume/duty presets. JSON supports notes, gates, rests,
-  finite pattern reuse, and whole-song loops. Slides, vibrato, tremolo and engine
-  arpeggio effects are not exposed by this JSON subset. Sequential chord notes
-  can supply authored arpeggios without adding an engine feature.
+  finite pattern reuse, whole-song loops, and two additive per-pattern keys:
+  `effects` (engine effect windows) and `commands` (instantaneous live commands).
+  The engine effects are `arpeggio`, `note_cut`, `lfo`, `slide`, `glissando` and
+  `noise_retrig`; the commands are `set_tempo`/`add_tempo`,
+  `set_transposition`/`add_transposition`, `set_volume`, `set_mod` and `cue`.
+  Engine effect state is per channel and shared by slot: `arpeggio` and
+  `note_cut` share one retrigger slot, and `slide`, `lfo`, `glissando` and
+  `noise_retrig` are one slot each, so windows in a slot must be ordered and
+  non-overlapping. `noise_retrig` is noise-channel only; the other five are
+  pulse-channel effects. Omitting both keys leaves an older score unchanged.
+  Read [composition guidance](references/composition.md) for musical recipes.
+- Effects and commands are emitted by the PROGMEM backend. The finite-v1 FX
+  adapter rejects any score that declares `effects` or `commands` (it does not
+  silently drop them), so a cue that needs either is PROGMEM-only.
 - Source changes belong in `examples/music_authoring/`; intermediate outputs
   belong in `build/`. Keep each promoted WAV/report pair and standalone review
   beside its score. Edit source, then regenerate derived files.
 - Current library demos loop. Preserve `"loop": true` when revising them unless
   the user's brief changes that requirement. Other compositions may be finite.
-- Use the current PROGMEM backend. Do not label a candidate as exported FX music
-  or modify the engine to fulfill an ordinary composition request. Preserve the
-  project's SRAM/flash priorities; report score bytes as asset cost only.
+- Use the PROGMEM backend for an ordinary cue and for anything with effects or
+  commands. Do not label a candidate as exported FX music or modify the engine to
+  fulfill an ordinary composition request. Preserve the project's SRAM/flash
+  priorities; report score bytes as asset cost only.
 
 ## Work from the musical problem
 

@@ -7,34 +7,42 @@ requested change.
 ## Source and capability facts
 
 - `tools/music_authoring/validate.py`: authoritative accepted source shape and
-  semantic checks. Ordered, non-overlapping events must fit their pattern.
-- `tools/music_authoring/lower.py`: canonical timeline, source pointers, gates
-  and event digest; reviews describe one cycle even for a looping score.
-- `tools/music_authoring/progmem_backend.py`: original-format score encoding.
+  semantic checks. Ordered, non-overlapping events must fit their pattern. The
+  additive per-pattern `effects` and `commands` keys are validated here too.
+- `tools/music_authoring/lower.py`: canonical timeline, source pointers, gates,
+  effect spans, command events and event digest; reviews describe one cycle even
+  for a looping score.
+- `tools/music_authoring/score.py`: `EFFECT_TYPES`/`EFFECT_SLOT` and
+  `COMMAND_TYPES`/`GLOBAL_COMMAND_TYPES` name the effect/command kinds, their
+  shared engine slots and which commands are score-global.
+- `tools/music_authoring/progmem_backend.py`: original-format score encoding,
+  including the effect/command byte mapping.
+- `tools/music_authoring/fx_backend.py`: the finite-v1 FX adapter, which rejects
+  pattern `effects`/`commands` (`FX_EFFECT_UNSUPPORTED`/`FX_COMMAND_UNSUPPORTED`).
 - `src/atm_cmd_constants.h`, `src/cmd_parse.c`, `src/atm_synth.c`, `src/osc.c`:
   local command meanings, effects, playback and timer behavior.
 
-`tools/atm-music capabilities --json` reports the available backend and limits.
-Its static report now marks `inspect`, `render` and `wav_preview` as available,
-matching the working commands. Check actual command diagnostics before
-concluding a tool is absent.
+`tools/atm-music capabilities --json` reports the available backends, features
+and limits. Its static report marks `inspect`, `render` and `wav_preview` as
+available, matching the working commands, and advertises `progmem` plus the
+finite-v1 FX backend for `build` (with `loops`/`effects`/`commands`/`sfx` all
+`false` for FX). Check actual command diagnostics before concluding a tool or
+feature is absent.
 
-One known discrepancy needs care until its fix lands:
+The JSON Schema (`schemas/atmlib-score-v1.schema.json`) covers the optional root
+`loop` boolean and the additive per-pattern `effects`/`commands` keys. The
+schema fixes only structural shape; semantic ranges, ordering, shared-slot
+non-overlap and duplicate rules are enforced by the CLI validator
+(`tools/music_authoring/validate.py`) and reported with stable codes and JSON
+Pointers.
 
-- The public JSON schema currently omits the optional root `loop` boolean that
-  the CLI validator supports. Use CLI validation and inspect the actual code;
-  do not remove requested looping just to satisfy the stale schema. Tracked in
-  Bead ATMlib2FX-9jo.
-
-`score.py:effective_tick_rate` now reports the timer's true rate
+`score.py:effective_tick_rate` reports the timer's true rate
 `2000 / floor(2000 / requested_tick_rate)` (an integer when the requested rate
 is a divisor of 2000, e.g. 50 Hz; the real quotient otherwise). Host durations
 derive from the integer divider `floor(2000 / tick_rate)`, not the rounded
 quotient (Bead ATMlib2FX-3ii.8). The device timer divider is unchanged, so
 prefer exact supported clocks such as 50 or 100 Hz for ordinary compositions;
 other clocks now report accurately.
-
-Recheck these discrepancies against current code when the skill is used.
 
 ## Real tempo changes
 
@@ -75,6 +83,65 @@ stop. For a loop, the renderer requests `2 * total_ticks + 1` callbacks. Compare
 pitch, duty, gates, delays, tempo and active/mute state between cycles. Ignore
 retained pitch/duty registers while muted. A gate/pattern-boundary change merits
 checking the relevant callbacks; avoid rerunning unrelated firmware experiments.
+
+## Effect and command fields
+
+Effects and commands are optional per-pattern keys; a pattern without them is
+unchanged. Each effect window has `at` (inclusive start tick), `type`, an
+optional exclusive `until` (default the pattern end; it must not cross it), and
+the type's operands:
+
+| `type` | Operands | Tick meaning |
+| --- | --- | --- |
+| `arpeggio` | `offsets` (1–2 ints 0–14), `period` 1–32, optional `repeat` | step every `period` ticks; absolute intervals from the base |
+| `note_cut` | `period` 1–32, optional `repeat` | silence `period` ticks after attack; `repeat` re-attacks every `2*period` |
+| `lfo` | `mode` tremolo/vibrato/modulation, `depth` 0–255, even `period` 2–64 | full-cycle modulation period |
+| `slide` | `param` volume/frequency/modulation, `amount` -128..127, `every` 1–64 | apply every `every` ticks |
+| `glissando` | `period` 1–128, `direction` up/down | ±1 semitone every `period` ticks |
+| `noise_retrig` | `period` 0–3, `note` | retrigger every `period + 1` ticks (noise only) |
+
+`commands` entries have `at`, `type` and integer `value`: `set_tempo` (8..255),
+`add_tempo`/`set_transposition`/`add_transposition` (-128..127), `set_volume`
+(0..255), `set_mod` (0..255), `cue` (0..255). `set_tempo`, `add_tempo` and
+`cue` are score-global; the rest are per-channel. Engine slots are shared:
+`arpeggio`/`note_cut` share the retrigger slot and `slide`, `lfo`, `glissando`,
+`noise_retrig` are one each, so windows in a slot must be ordered and
+non-overlapping.
+
+Rejections use stable codes with JSON Pointers: `UNKNOWN_EFFECT_TYPE`,
+`EFFECT_BOUNDS`, `EFFECT_ORDER`, `EFFECT_OVERLAP`, `EFFECT_CHANNEL_MISMATCH`,
+`UNKNOWN_COMMAND_TYPE`, `COMMAND_BOUNDS`, `COMMAND_ORDER`, `COMMAND_DUPLICATE`.
+A pattern with `effects`/`commands` is PROGMEM-only; `build --backend fx` fails
+with `FX_EFFECT_UNSUPPORTED` or `FX_COMMAND_UNSUPPORTED`.
+
+`inspect`/`review.json` carry the expanded `effects`/`commands` spans (with
+source pointers) only when the score declares them; `validate` and `build`
+reports add `effect_<kind>`/`command_<kind>` names to `required_features`.
+
+## Verifying effect scores with tick traces
+
+A successful render writes `tick_trace.csv` (columns
+`tick,channel,tempo,inc,vol,note,delay,cvol,cmod,active`, one row per channel
+per completed callback; song tick 0 is trace tick 1). Read the trace to confirm
+the bytes landed as authored, not just that validation passed:
+
+- `arpeggio` advances `inc` through base, base+high-nibble, base+low-nibble on
+  the `period` grid in the pattern's channel; a two-step window never shows the
+  third value.
+- `note_cut` alternates `vol` between the instrument level and 0 on `period`
+  boundaries; `repeat: true` re-attacks every `2*period` ticks.
+- `lfo tremolo`/`vibrato` modulate `vol`/`inc` over the full cycle;
+  `modulation` moves `cmod` (source-verified only, no EVIDENCE trace row).
+- `slide` steps `vol` (volume), `inc` (frequency) or `cmod` (modulation) on the
+  `every` grid; the advanced form only steps every `every` ticks. Volume and
+  frequency are trace-confirmed; the modulation target is source-verified only.
+- `glissando` steps `note` ±1 semitone each `period` ticks.
+- `noise_retrig` shows `inc` reseeding on the noise channel every
+  `period + 1` ticks.
+- `commands` show one-tick writes in `tempo`/`vol`/`cmod` at the command tick.
+
+Matching a per-channel trace against the expanded spans in `review.json` is the
+check that a specific effect window sounds where it was authored.
 
 ## Loop semantics
 

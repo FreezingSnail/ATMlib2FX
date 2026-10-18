@@ -20,11 +20,13 @@ describe anything the current `src/` does not do.
   semantics, the loop mechanism, call depth and tempo handling all differ.
   Section [1](#1-what-differs-from-the-t-arg-engine) lists the differences that
   matter to a composer; each is marked in place with **⚠ differs**.
-- The first version (v1) JSON score format exposes only notes, gates, rests,
-  finite pattern reuse, whole-song loops, tempo and volume/duty presets. The
-  macro recipes below that use slides, LFOs, arpeggio, glissando or note cut are
-  **engine capabilities that JSON v1 does not emit**; use them only when hand-
-  writing a C header against `src/atm_cmd_constants.h`.
+- The first version (v1) JSON score format exposes notes, gates, rests, finite
+  pattern reuse, whole-song loops, tempo and volume/duty presets, plus the
+  additive per-pattern `effects` and `commands` keys (arpeggio, note cut, LFO,
+  slide, glissando, noise retrigger; tempo/transposition/volume/duty/cue
+  commands), which are PROGMEM-only because the finite-v1 FX adapter rejects
+  them. The macro recipes below are still written at the C level; use them when
+  hand-writing a C header against `src/atm_cmd_constants.h`.
 - Write commands with the macros only. The byte values are an implementation
   detail owned by `src/atm_cmd_constants.h`.
 
@@ -265,7 +267,7 @@ ATM_CMD_I_PATTERN_END,
 For a low rumble/thunder texture, sample the noise color with note tokens and,
 if the score is hand-written, retrigger the LFSR with
 `ATM_CMD_M_NOISE_RETRIG_ON(cfg)` (2 bytes; `ATM_CMD_I_NOISE_RETRIG_OFF` is
-1 byte). This is an engine macro not exposed by JSON v1.
+1 byte). JSON v1 exposes the equivalent as the `noise_retrig` effect.
 
 A tonal kick (when a pulse channel is free of arpeggio), adapted from the
 manual:
@@ -295,25 +297,30 @@ score compiler emits.
 | `ATM_CMD_M_DELAY_TICKS_2(d)`, d = 257-65534 | 3 | yes |
 | `ATM_CMD_I_PATTERN_END` (STOP; alias of `_RETURN`) | 1 | yes |
 | `ATM_CMD_I_TRANSPOSITION_OFF` | 1 | no |
-| `ATM_CMD_I_GLISSANDO_OFF` | 1 | no |
-| `ATM_CMD_I_ARPEGGIO_OFF` | 1 | no |
-| `ATM_CMD_I_NOISE_RETRIG_OFF` | 1 | no |
+| `ATM_CMD_I_GLISSANDO_OFF` | 1 | yes (glissando off) |
+| `ATM_CMD_I_ARPEGGIO_OFF` | 1 | yes (arpeggio/note_cut off) |
+| `ATM_CMD_I_NOISE_RETRIG_OFF` | 1 | yes (noise_retrig off) |
 | `ATM_CMD_M_SET_VOLUME` | 2 | yes (also used for mute = 0) |
 | `ATM_CMD_M_SET_MOD` (duty) | 2 | yes |
-| `ATM_CMD_M_SET_TEMPO` / `ATM_CMD_M_ADD_TEMPO` | 2 | set only |
-| `ATM_CMD_M_SET_TRANSPOSITION` / `ATM_CMD_M_ADD_TRANSPOSITION` | 2 | no |
-| `ATM_CMD_M_NOISE_RETRIG_ON` | 2 | no |
+| `ATM_CMD_M_SET_TEMPO` / `ATM_CMD_M_ADD_TEMPO` | 2 | yes (set/add tempo command) |
+| `ATM_CMD_M_SET_TRANSPOSITION` / `ATM_CMD_M_ADD_TRANSPOSITION` | 2 | yes (set/add transposition command) |
+| `ATM_CMD_M_NOISE_RETRIG_ON` | 2 | yes (noise_retrig) |
 | `ATM_CMD_M_SET_LOOP_PATTERN` | 2 | yes (when `"loop": true`) |
 | `ATM_CMD_M_CALL` | 2 | no |
 | `ATM_CMD_M_CALL_REPEAT` | 3 | no (repeats are expanded) |
-| `ATM_CMD_M_GLISSANDO_ON` | 2 | no |
-| `ATM_CMD_M_NOTECUT_ON` | 2 | no |
-| `ATM_CMD_M_SLIDE_{VOL,FREQ,MOD}_ON` | 3 | no |
-| `ATM_CMD_M_SLIDE_{VOL,FREQ,MOD}_OFF` | 2 | no |
-| `ATM_CMD_M_SLIDE_{VOL,FREQ,MOD}_ADV_ON` | 4 | no |
-| `ATM_CMD_M_ARPEGGIO_ON` | 3 | no |
-| `ATM_CMD_M_{TREMOLO,VIBRATO,MOD_LFO}_ON` | 4 | no |
-| `ATM_CMD_M_{TREMOLO,VIBRATO,MOD_LFO}_OFF` | 2 | no |
+| `ATM_CMD_M_GLISSANDO_ON` | 2 | yes (glissando) |
+| `ATM_CMD_M_NOTECUT_ON` | 2 | yes (note_cut) |
+| `ATM_CMD_M_SLIDE_{VOL,FREQ,MOD}_ON` | 3 | yes (slide, `every` == 1) |
+| `ATM_CMD_M_SLIDE_{VOL,FREQ,MOD}_OFF` | 2 | yes (slide off) |
+| `ATM_CMD_M_SLIDE_{VOL,FREQ,MOD}_ADV_ON` | 4 | yes (slide, `every` > 1) |
+| `ATM_CMD_M_ARPEGGIO_ON` | 3 | yes (arpeggio) |
+| `ATM_CMD_M_{TREMOLO,VIBRATO,MOD_LFO}_ON` | 4 | yes (lfo) |
+| `ATM_CMD_M_{TREMOLO,VIBRATO,MOD_LFO}_OFF` | 2 | yes (lfo off) |
+
+The effect/command rows are emitted only when a pattern declares the matching
+`effects`/`commands` window, and only by the PROGMEM backend; the finite-v1 FX
+adapter rejects both families. `ATM_CMD_I_TRANSPOSITION_OFF`, `CALL` and
+`CALL_REPEAT` are still hand-written only.
 
 Header (full format, `ATM_SCORE_FMT_FULL`):
 
@@ -364,7 +371,7 @@ about **60 % of the title/menu volume**, so effects at full volume stay audible.
   sooner and sounds clipped.
 - **Zero byte cost.** Changing a value never changes the command count.
 
-For a JSON v1 score (only `volume` exists; slides are not exposed), set each
+For a JSON v1 score (use a `slide` volume effect for the decay), set each
 instrument's `volume` to roughly 60 % of its title value:
 
 ```json

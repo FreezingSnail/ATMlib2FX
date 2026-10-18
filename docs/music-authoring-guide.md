@@ -68,21 +68,23 @@ whole loop; `build` is the deliberate export you run when the review looks right
 go to stderr) reports features, channels, pitch range, host limits, backend
 availability and tool/engine identity. Read it at the start of a session.
 
-**Known discrepancy, documented not fixed.** `capabilities --json` still reports
-`inspect` and `render` as `"available": false` — that payload is frozen by the
-ATMlib2FX-3ii.1 `expected/review.json` golden and its test. The `inspect` and
-`render` **subcommands do work** and report their own truthful availability in
-their own payloads:
+**Capability report matches real command support.** `capabilities --json`
+advertises `inspect`, `render` and `wav_preview` as available, matching the
+working commands, and advertises both backends: `progmem` and the finite-v1 FX
+adapter for `build`. The ATMlib2FX-3ii.1 `expected/review.json` golden keeps a
+byte-stable *embedded* capabilities block inside `review.json` for canonical-
+event digest stability; the `inspect` and `render` subcommands report their own
+truthful availability in their own payloads:
 
 ```
 render  JSON: "capabilities": { "render": { "available": true }, "wav_preview": { "available": true }, ... }
 inspect JSON: "capabilities": { "inspect": { "available": true }, "canonical_payload_capabilities_pinned": true, ... }
 ```
 
-Rule for models: **do not** conclude a command is unavailable from the static
-`capabilities` block. Run the command and read its own response. (The top-level
-`capabilities --json` output still honestly reports the one genuinely missing
-backend, `fx`.)
+Rule for models: **do not** conclude a command is unavailable from a stale
+embedded block. Run the command and read its own response. (`validate` and
+`render` are `progmem`-only; `--backend fx` there exits `2` with
+`BACKEND_UNAVAILABLE`.)
 
 Relevant `capabilities --json` facts:
 
@@ -90,7 +92,7 @@ Relevant `capabilities --json` facts:
 | --- | --- |
 | `engine` | `ATMlib` 1.2.4, channels `pulse0`,`pulse1`,`pulse2`,`noise`, tick base 2000 Hz |
 | `pitch_range` | `C2`..`D7` (note indices 1..63) |
-| `backends` | `progmem` available; `fx` **unavailable** (pending ATMlib2FX-hlh.2 architecture decision) |
+| `backends` | `progmem` available; `fx` available for finite-v1 `build` with `loops`/`effects`/`commands`/`sfx` all `false` |
 | host limits | 64 instruments, 256 patterns, 4096 source events, 4096 source effects, 4096 source commands, 65536 expanded notes, 1048576 ticks |
 | `canonicalization` | `atmlib-canonical-events-v1` |
 
@@ -221,10 +223,12 @@ and JSON Pointers: `UNKNOWN_EFFECT_TYPE`, `EFFECT_BOUNDS`, `EFFECT_ORDER`,
 `EFFECT_OVERLAP`, `EFFECT_CHANNEL_MISMATCH`, `UNKNOWN_COMMAND_TYPE`,
 `COMMAND_BOUNDS`, `COMMAND_ORDER`, `COMMAND_DUPLICATE`.
 
-> These keys are validated by the CLI today. Emitting the engine command bytes
-> (PROGMEM), capability reporting and viewer display are delivered by
-> `ATMlib2FX-3ii.14.*`; do not assume an effect is audible in a build until that
-> backend work lands.
+> These keys are validated by the CLI and emitted by the PROGMEM backend as
+> engine effect/command bytes; `capabilities`, the canonical review payload and
+> the viewer report and draw them. The finite-v1 FX adapter rejects any score
+> that declares `effects` or `commands`
+> (`FX_EFFECT_UNSUPPORTED`/`FX_COMMAND_UNSUPPORTED`), so author effect passages
+> on the PROGMEM backend.
 
 ### From a natural-language brief to concrete fields
 
@@ -260,8 +264,11 @@ encoding; the local source remains authoritative.
 For exact behavior, see `src/atm_cmd_constants.h`, `src/cmd_parse.c` and
 `src/atm_synth.c`. For example, the local arpeggio processor adds each stored
 nibble to the base note rather than chaining them, so the lowering stores the
-second offset directly in the low nibble; see
-[`music-authoring-interface.md`](music-authoring-interface.md#effect-windows-and-live-commands).
+second offset directly in the low nibble. The emitted engine stream is
+`[ATM_CMD_P_ARPEGGIO_ON, arpTiming, notes]` — the public
+`ATM_CMD_M_ARPEGGIO_ON(p1, p2)` macro expands `(p2), (p1)`, so the macro-
+argument order `(notes, timing)` is the reverse of the stream order (see
+[`music-authoring-interface.md`](music-authoring-interface.md#effect-windows-and-live-commands)).
 Local pitch indices start at C2; importing old numeric
 note values would change the music. Old combined-volume limits also require
 checking against this port's mixer; they are not a replacement for local renders.
@@ -437,23 +444,33 @@ infer engine or game fit from a score byte count. `build` does not invoke
 `arduino-cli`, so it reports no AVR image measurement (`avr_measurements.measured
 = false`).
 
-### PROGMEM vs FX — FX is explicitly unavailable
+### PROGMEM vs FX — effects are PROGMEM-only
 
-- `progmem` is the only implemented backend: the song lives in program flash
-  beside the library, played by the original engine.
-- `--backend fx` is **not offered**. It exits `2` with `BACKEND_UNAVAILABLE`:
+- `progmem` is the default backend: the song lives in program flash beside the
+  library, played by the original engine. It emits the full v1 surface,
+  including pattern `effects` and `commands`.
+- `--backend fx` is offered for **finite v1** `build` only. It writes a compact
+  FX stream (`stream.bin`/`stream.h`) rather than a PROGMEM score, and it
+  advertises `loops`/`effects`/`commands`/`sfx` all `false`.
+- A score that declares pattern `effects` or `commands` is **rejected**, never
+  silently dropped: `build --backend fx` exits `2` with `FX_EFFECT_UNSUPPORTED`
+  at `/patterns/<name>/effects/<index>` or `FX_COMMAND_UNSUPPORTED` at
+  `/patterns/<name>/commands/<index>`. A `"loop": true` score is exported as its
+  finite arrangement once and reported with `LOOP_NOT_EXPORTED` (a warning).
+- `validate` and `render` stay `--backend progmem`; `--backend fx` there exits
+  `2` with `BACKEND_UNAVAILABLE`.
 
 ```json
-{"code": "BACKEND_UNAVAILABLE",
- "message": "Backend 'fx' is not implemented. The FX playback contract is pending ATMlib2FX-hlh.2 (owned by ATMlib2FX-3ii.3).",
- "suggestion": "Use --backend progmem; read capabilities for availability."}
+{"code": "FX_EFFECT_UNSUPPORTED",
+ "message": "pattern 'lead' declares a 'arpeggio' effect window; finite v1 cannot represent live effects.",
+ "suggestion": "Remove the effect window. Finite v1 encodes notes, rests, pulse duty, fixed instrument volume and the clock only; author the sound with note events or build with the PROGMEM backend."}
 ```
 
 FX packaging (offloading the song to the FX chip, with its own stream framing,
-due-group and service-gap admission checks) is a **separate program-storage and
-runtime decision** gated on architecture selection in `ATMlib2FX-hlh.2` /
-`ATMlib2FX-3ii.3`. Do not advertise or assume FX output, and do not present the
-PROGMEM asset as an FX artifact. The score source is unaffected by that decision.
+due-group and service-gap admission checks) remains a separate program-storage
+and runtime decision selected by `ATMlib2FX-hlh.6`. Do not present a PROGMEM
+asset as an FX artifact, and do not expect FX output for a score with effects or
+commands. The JSON score source is unaffected by the backend choice.
 
 ## 7. Revise one field, then re-validate/view/render
 
@@ -516,7 +533,7 @@ different WAV, and a different review, all traceable back to the one edited fiel
 | faithful WAV | `tools/atm-music render SONG.json --backend progmem --seconds N --out OUT/preview --json` |
 | viewer + audio | `tools/atm-music inspect SONG.json --audio-preview OUT/preview --out OUT/review/review.html --json` |
 | PROGMEM build | `tools/atm-music build SONG.json --backend progmem --out OUT/build --json` |
-| FX build | not offered — exits `2` `BACKEND_UNAVAILABLE` |
+| FX build | `tools/atm-music build SONG.json --backend fx --out OUT/build --json` (finite v1 only; rejects effects/commands) |
 
 Outputs written by this guide (all under the git-ignored
 `build/music-authoring/guide/`): `preview/preview.wav`,
@@ -531,8 +548,10 @@ not claim to have judged musical quality.
 - **Sound review is the listener's job.** Rendered WAVs and traces are
   correctness evidence (gates, silence, timing, determinism); they are not a
   numeric substitute for taste, and this guide does not claim a model heard them.
-- **No FX export and no FX-derived footprint.** FX is unavailable pending
-  architecture selection; a score byte count says nothing about whole-game fit.
+- **PROGMEM is the effect-capable backend.** The finite-v1 FX adapter rejects
+  any score with pattern `effects`/`commands`; a score byte count says nothing
+  about whole-game fit, and the FX stream's own size is not a device
+  measurement.
 - **Mono capture.** The WAV is the emulated mono speaker mix; per-channel
   isolation is not possible from one file. After the score ends the stopped PWM
   leaves a constant DC rail (≈ −2000, zero AC) that is acoustically silent, not

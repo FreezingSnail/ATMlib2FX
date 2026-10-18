@@ -1,8 +1,9 @@
 # Model music authoring interface
 
-Status: proposed authoring contract; planning only. The commands and JSON format
-below are not implemented. Planning beads: `ATMlib2FX-ba0` and the HTML review
-amendment `ATMlib2FX-3ii.5`. Delivery epic:
+Status: implemented contract. The source shape, effect/command syntax and CLI
+commands below are delivered by `tools/music_authoring/`; the “Measured …”
+sections record the verified behavior. Original planning beads: `ATMlib2FX-ba0`
+and the HTML review amendment `ATMlib2FX-3ii.5`. Delivery epic:
 `ATMlib2FX-3ii`. This design treats “model” as an LLM composing music.
 
 ## Purpose and boundary
@@ -68,7 +69,7 @@ are absent from every existing score, so documents and byte goldens written
 before this extension validate and serialize unchanged. FX SFX remains a
 separate capability extension.
 
-### Proposed JSON
+### Example JSON
 
 ```json
 {
@@ -199,7 +200,11 @@ subset scopes them. A pattern with no events has no determinable voice, so the
 channel check does not apply; such effects are accepted but never sound.)
 
 All byte mappings below were checked against `src/atm_cmd_constants.h`,
-`src/cmd_parse.c` and `src/atm_synth.c`.
+`src/cmd_parse.c` and `src/atm_synth.c`. Most are also confirmed by the
+engine tick traces recorded in
+[`build/bead-3ii-14-3/EVIDENCE.md`](../build/bead-3ii-14-3/EVIDENCE.md); where a
+trace does not exercise an operand, that is noted in place. The mappings are
+implemented by `tools/music_authoring/progmem_backend.py`.
 
 - **arpeggio** — `offsets` (array of 1 or 2 integers `0..14`), `period`
   (integer `1..32` ticks), `repeat` (optional boolean, default `true`).
@@ -207,13 +212,20 @@ All byte mappings below were checked against `src/atm_cmd_constants.h`,
   cycles base → base+a (two-step); `offsets=[a,b]` cycles base → base+a →
   base+b (three-step). The engine adds each stored nibble to the base note (it
   does not chain), so each offset must be `<= 14` because nibble `15` selects
-  note-off. Bytes: `ATM_CMD_P_ARPEGGIO_ON, notes, arpTiming` with
-  `notes = (offsets[0] << 4) | offsets[1]` (low nibble unused for
-  a two-step cycle) and `arpTiming = (period - 1) | (two_step ? 0x40 : 0) |
-  (repeat ? 0 : 0x20)`. `arpTiming` bit 6 selects the step count (set =
+  note-off. The engine stream is
+  `[ATM_CMD_P_ARPEGGIO_ON, arpTiming, notes]`: `cmd_parse.c` reads
+  `params[0]` into `arpTiming` and `params[1]` into `arpNotes`, and the public
+  `ATM_CMD_M_ARPEGGIO_ON(p1, p2)` macro expands to `..., (p2), (p1)` — so the
+  macro-argument order `(notes, timing)` is the reverse of the emitted byte
+  order. With `notes = (offsets[0] << 4) | offsets[1]` (low nibble unused for a
+  two-step cycle) and
+  `arpTiming = (period - 1) | (two_step ? 0x40 : 0) | (repeat ? 0 : 0x20)`.
+  `arpTiming` bit 6 selects the step count (set =
   two-step), bit 5 disables the automatic base re-trigger (`repeat=false`), and
   bits 4:0 are `period - 1`, so the engine advances one arpeggio step every
-  `period` ticks. The window ends with `ATM_CMD_I_ARPEGGIO_OFF`.
+  `period` ticks. This order is confirmed by the `effect_probe` tick traces
+  (`notes` measured as base, base+4, base+7). The window ends with
+  `ATM_CMD_I_ARPEGGIO_OFF`.
 - **note_cut** — `period` (integer `1..32` ticks), `repeat` (optional boolean,
   default `true`). Silences the channel `period` ticks after the note starts;
   `repeat=true` re-attacks the base note every `2*period` ticks, `repeat=false`
@@ -229,6 +241,8 @@ All byte mappings below were checked against `src/atm_cmd_constants.h`,
   cycle is `2*(byte+1) = period` ticks. `period` must be even because the
   half-period is `period/2`. There is one LFO slot; OFF is
   `ATM_CMD_P_LFO_OFF` (the engine zeroes `treviDepth` regardless of target).
+  Trace-confirmed for `tremolo` and `vibrato`; the `modulation` selector is
+  source-verified only.
 - **slide** — `param` (`volume` | `frequency` | `modulation`), `amount`
   (integer `-128..127`, an engine `int8`), `every` (integer `1..64` ticks).
   `param` writes the engine selector `0/1/2` (volume/`phase_increment`/`mod`);
@@ -238,7 +252,9 @@ All byte mappings below were checked against `src/atm_cmd_constants.h`,
   `ATM_CMD_P_SLIDE_ON, sel, (int8)amount` when `every == 1`, or the advanced
   three-operand form `ATM_CMD_P_SLIDE_ADV_ON, sel, (int8)amount, every - 1`
   otherwise. This engine has **no step-count operand**, so the subset has no
-  `steps` field. OFF is `ATM_CMD_P_SLIDE_OFF, sel`.
+  `steps` field. OFF is `ATM_CMD_P_SLIDE_OFF, sel`. The `volume` and
+  `frequency` params are trace-confirmed; the `modulation` selector is
+  source-verified only.
 - **glissando** — `period` (integer `1..128` ticks), `direction`
   (`up` | `down`). Steps the channel note ±1 semitone every `period` ticks,
   clamped to C2..D7. Bytes:
@@ -273,6 +289,11 @@ would divide by zero, so the range starts at 8. `set_tempo`, `add_tempo` and
 re-executes them; `set_transposition`, `set_volume` and `set_mod` write the
 playing channel's state. Prefer `set_*` over `add_*` for any pattern shared by
 more than one channel.
+
+Trace-confirmed in the EVIDENCE tick table: `set_tempo`, `add_tempo`,
+`set_volume`, `set_mod` and `set_transposition`. `cue` is byte-verified only
+(the trace has no cue column) and `add_transposition` has no dedicated trace
+row, so both are source-verified only.
 
 ### Diagnostics
 
@@ -332,13 +353,14 @@ one-tick gates and adjacent pattern boundaries for extra-tick errors. Legacy
 pattern/offset and call-stack limits must be checked; a flattened bounded
 representation is acceptable and must report its asset cost.
 
-FX export is a separate adapter after `ATMlib2FX-hlh.2` settles the playback
-contract. The fixture compiler is reference material, not a stable backend API.
-The authoring format is not blocked by that decision; promising production FX
-output is blocked. Check the chosen due-group and service-gap admission rules
-before emitting an FX artifact.
+FX export is implemented as a separate **finite-v1** adapter
+(`build --backend fx`, stream framing selected by `ATMlib2FX-hlh.6`); it emits
+the pinned compact stream and rejects pattern effects/commands, loops and SFX.
+The fixture compiler remains reference material, not a stable backend API. Check
+the chosen due-group and service-gap admission rules before emitting an FX
+artifact; the authoring format is not blocked by that decision.
 
-## Proposed CLI and feedback contract
+## CLI and feedback contract
 
 ```sh
 atm-music capabilities --json
@@ -349,8 +371,10 @@ atm-music inspect song.json --audio-preview preview/ --out review.html --json
 atm-music build song.json --backend progmem --out generated/ --json
 ```
 
-These commands are proposed. `--backend fx` is advertised only when its adapter
-is supported. A capability response lists schema version, implemented features,
+These commands are implemented by the `tools/atm-music` CLI. `--backend fx` is
+advertised for finite-v1 `build` only (pattern effects/commands, loops and SFX
+are rejected there); `validate` and `render` stay `--backend progmem`. A
+capability response lists schema version, implemented features,
 channel/pitch ranges, host limits, backend availability, tool version, engine
 identity and render provenance. The model reads it at the start of a session;
 backend capability absence must be explicit.
@@ -497,12 +521,16 @@ fields. Keep an optional agent skill or MCP transport as follow-up packaging.
   original-equivalent boundary tests. Whole-song PROGMEM loops are supported for
   the v1 subset above; in-song tempo changes are now expressible through the
   additive `commands` key.
-- The v1 effect-window subset now carries named typed operands, documented units
-  and shared-slot collision rules (above). Remaining effect work — emitted bytes
-  and trace-backed semantics in the PROGMEM backend, capability reporting, and
-  viewer/inspect effect state — is tracked in `ATMlib2FX-3ii.14.*`. README
-  descriptions may still contain discrepancies (for example slide target
-  numbering); source and measured traces decide behavior.
+- The v1 effect-window subset is implemented: named typed operands, documented
+  units, shared-slot collision rules, PROGMEM byte encoding and trace-confirmed
+  engine semantics (above). `required_features` names the effect/command
+  families a score uses; `lower`/`review.json`/the viewer carry expanded effect
+  spans and live commands; and the finite-v1 FX adapter rejects both families
+  (never silently drops them).
+  Measured tick traces live in
+  [`build/bead-3ii-14-3/EVIDENCE.md`](../build/bead-3ii-14-3/EVIDENCE.md).
+  Older example README descriptions may still reflect the pre-extension subset;
+  source and measured traces decide behavior.
 - A host envelope/preset feature must show its generated event density and asset
   cost. It cannot introduce new device-side instrument state implicitly.
 - SFX authoring needs a separate mono profile and explicit target channel,
