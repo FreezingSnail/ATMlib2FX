@@ -21,7 +21,7 @@ static void trigger_note(const uint8_t note, struct atm_channel_state *ch)
 		} else {
 			/* Slide is not re-triggered */
 			const uint8_t q = ch->vf_slide.slide_count & 0xC0;
-			if (!q == 0) {
+			if (q == 0) {
 				/* Vol slide, don't trigger vol */
 				ch->dst_osc_params->mod = ch->mod;
 			} else if (q == 0x80) {
