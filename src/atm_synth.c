@@ -255,6 +255,43 @@ uint8_t atm_synth_check_cue(uint8_t id)
 	return atmlib_state.cue == id;
 }
 
+/* Set the score tick rate in Hz at runtime, with no ATM_CMD_M_SET_TEMPO /
+ * ATM_CMD_M_ADD_TEMPO command (ATMlib2FX-y1w). The value is stored in
+ * atmlib_state.tick_rate and written to the music tick callback (osc callback
+ * 0) immediately, so the change takes effect while the score is paused or
+ * stopped; during playback the score tick handler re-applies it every tick
+ * anyway. The sound-effect player keeps its own independent rate (callback 1)
+ * and is never touched here.
+ *
+ * Clamp: osc_set_tick_rate() computes
+ *   div = OSC_SAMPLERATE / OSC_ISR_PRESCALER_DIV / rate_hz - 1,
+ * so rate_hz == 0 would divide by zero; 0 is clamped to 1 (matching upstream).
+ * ATMLIB_TICKRATE_MAX (255) is the upper bound (uint8_t, already implicit).
+ *
+ * Quantization: the osc timer base is
+ *   OSC_SAMPLERATE / OSC_ISR_PRESCALER_DIV = 16000 / 8 = 2000 Hz,
+ * and the ISR reloads its down-counter with preset = 2000 / rate - 1. A music
+ * callback therefore fires every floor(2000 / rate) base events, giving
+ *   effective_hz = 2000 / floor(2000 / rate)   (>= the requested rate):
+ *     rate    0->1   1      8      255
+ *     preset  207    207    249    6
+ *     period  208    208    250    7
+ *     eff Hz  9.62   9.62   8.00   285.71
+ * osc.h warns tick_hz < 8 is unsupported: for rate < 8, 2000 / rate - 1 exceeds
+ * 255 and the uint8_t preset wraps, so the request is not honoured (rate 1 and
+ * 2 both land near 9.6 Hz). Request >= 8 for a meaningful tempo, matching the
+ * authoring guideline range 8..255. 1..7 are accepted only for upstream parity.
+ */
+void atm_synth_set_tempo(uint8_t tick_rate)
+{
+	if (tick_rate == 0) {
+		tick_rate = 1; /* upstream clamp: avoids divide-by-zero in osc */
+	}
+	atmlib_state.tick_rate = tick_rate;
+	/* Apply now so the new rate is in effect even while paused/stopped. */
+	osc_set_tick_rate(0, atmlib_state.tick_rate);
+}
+
 #if !ATM_HAS_FX_STREAM_BACKEND
 uint8_t atm_synth_get_score_paused(void)
 {

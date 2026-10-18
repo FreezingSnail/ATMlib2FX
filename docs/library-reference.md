@@ -609,3 +609,26 @@ P1
     Range : [0:255] (u8)
     Note  : The loop index takes effect when all channels have stopped
 ```
+
+##### Runtime tempo (sketch API)
+
+`void atm_synth_set_tempo(uint8_t tick_rate)` changes the music tick rate in Hz
+at runtime, without an `ATM_CMD_M_SET_TEMPO` / `ATM_CMD_M_ADD_TEMPO` command in
+the score. Use it when the sketch (not the song) owns the tempo.
+
+- The value is stored in `atmlib_state.tick_rate` and applied to the music tick
+  callback immediately, so it takes effect while the score is paused or stopped;
+  during playback the score tick handler re-applies it every tick.
+- `0` is clamped to `1` (a rate of 0 would divide by zero in the timer divider),
+  matching upstream. The upper bound is `ATMLIB_TICKRATE_MAX` (255).
+- The sound-effect player keeps its own independent rate and is unaffected.
+- Request `>= 8`: the osc timer divider runs on a 2000 Hz base
+  (`OSC_SAMPLERATE / OSC_ISR_PRESCALER_DIV`) and reloads its down-counter with
+  `2000 / rate - 1`, so a callback fires every `floor(2000 / rate)` base events
+  and the effective rate is `2000 / floor(2000 / rate)` (>= the request). Rates
+  below 8 wrap the 8-bit preset and are not honoured (see `osc.h`).
+
+``` C
+/* e.g. on a button press while the score plays (or is paused) */
+atm_synth_set_tempo(150); /* effective 2000 / floor(2000/150) = 2000/13 = 153 Hz */
+```

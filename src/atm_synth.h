@@ -80,6 +80,20 @@ uint8_t atm_synth_is_score_stopped(void);
 void atm_synth_set_score_paused(const uint8_t paused);
 uint8_t atm_synth_get_score_paused(void);
 
+/* Change the score tick rate (Hz) at runtime without a score command.
+ *
+ * Stored in atmlib_state.tick_rate and applied to the music tick callback
+ * immediately, so it takes effect while the score is paused or stopped (during
+ * playback the score tick handler re-applies it every tick). The sound-effect
+ * player has its own independent rate and is unaffected.
+ *
+ * 0 is clamped to 1 to avoid a divide-by-zero in osc_set_tick_rate(); the upper
+ * bound is ATMLIB_TICKRATE_MAX (255). Request >= 8: the osc timer divider is
+ * 2000/floor(2000/rate) base events per tick, so rates below the timer's
+ * supported minimum (osc.h) wrap the ISR preset and are not honoured. See
+ * src/atm_synth.c for the quantized-rate table. */
+void atm_synth_set_tempo(uint8_t tick_rate);
+
 /* Cue channel (ATM_CMD_M_CUE). Sketches poll these to sync game events to the
  * music. Both operate on the single shared cue byte: score, SFX and FX backends
  * latch into the same byte, so the most recent ATM_CMD_M_CUE wins. */
