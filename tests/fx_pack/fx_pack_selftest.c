@@ -10,12 +10,12 @@
  *     score-header rejections (format, channel count);
  *   - legacy v1 score translation to modern commands;
  *   - a host decode round-trip using the real device decoder
- *     (src/atm_synth.c with ATM_HAS_FX_COMPACT), porting the retained
+ *     (src/atm_synth.c), porting the retained
  *     compact_format_test.c checks (gap advance, oversize, zero-channel,
  *     malformed, underflow freeze) plus a converted-stream round-trip.
  *
  * The device decoder is compiled into this host binary exactly as in
- * research/fx/fx_compact_spike/trace/compact_format_test.c; it contributes no
+ * the retired compact spike format test; it contributes no
  * AVR bytes. Run via tests/fx_pack/run-tests.sh.
  */
 #include <stdint.h>
@@ -23,7 +23,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ATM_HAS_FX_COMPACT (1)
 #define ATM_FX_COMPACT_DIAG (1)
 #include "atm_synth.c"
 

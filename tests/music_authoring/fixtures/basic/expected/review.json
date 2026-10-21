@@ -516,26 +516,16 @@
   "diagnostics": [],
   "capabilities": {
     "backend": {
-      "progmem": {
-        "available": true
-      },
       "fx": {
-        "available": false,
-        "reason": "FX playback contract is pending the architecture decision in ATMlib2FX-hlh.2; FX export is owned by ATMlib2FX-3ii.3."
+        "available": true
       }
     },
     "capabilities": {
-      "inspect": {
-        "available": false,
-        "reason": "Offline HTML/JS track review is owned by ATMlib2FX-3ii.6; this task publishes the canonical review payload only."
+      "validate": {
+        "available": true
       },
-      "render": {
-        "available": false,
-        "reason": "No WAV renderer is implemented in this task; bounded WAV preview and playback evidence are owned by ATMlib2FX-3ii.2."
-      },
-      "wav_preview": {
-        "available": false,
-        "reason": "No WAV renderer is implemented in this task; bounded WAV preview and playback evidence are owned by ATMlib2FX-3ii.2."
+      "build": {
+        "available": true
       }
     }
   }

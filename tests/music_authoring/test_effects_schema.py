@@ -7,7 +7,7 @@ RFC 6901 JSON Pointers for every rejection class.
 
 Engine semantics referenced below come from ``src/atm_cmd_constants.h``,
 ``src/cmd_parse.c`` and ``src/atm_synth.c``; the exact byte mapping is recorded
-in ``docs/music-authoring-interface.md``.
+in ``docs/music-authoring.md``.
 """
 
 from __future__ import annotations

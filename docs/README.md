@@ -1,16 +1,12 @@
 # Documentation
 
-- [Music authoring guide](music-authoring-guide.md): workflow for LLMs and people.
-- [Songwriting guide](songwriting-guide.md): chord, drum, tempo, loop, byte-cost
-  and volume recipes adapted from the T-arg ATMlib manual, rewritten for the
-  local `ATM_CMD_M_*` macros.
-- [ATMlib2FX music skill](skills/atm-music/SKILL.md): composition, revision,
-  articulation, tempo, loops, and matching preview guidance for this port.
-- [Music authoring interface](music-authoring-interface.md): score and artifact contracts.
-- [Library reference](library-reference.md): inherited library background, C/C++
-  playback examples, binary score layout, and command macros.
-- [Repository layout](repository-layout.md): directory boundaries and moved files.
-- [FX music integration](fx/integration.md): compact FX stream ownership, service placement, refill deadline, ring/admission limits, global loops (resident and streaming) and admission flags.
-- [FX research](../research/fx/README.md): storage investigation, measurements,
-  architecture decisions, and experimental code.
-- [Compile-time mixer gating spike](../research/fx/fx-mixer-gating-results.md): per-channel/noise ISR mixer compile-out — recommended (go).
+- [Music authoring](music-authoring.md): JSON score surface, FX export, ring and
+  loop options, and sketch integration.
+- [FX music integration](fx/integration.md): compact stream ownership, service
+  placement, refill deadline, ring/admission limits and global loops.
+- [Repository layout](repository-layout.md): directory boundaries and moved
+  files.
+- [ATMlib2FX music skill](skills/atm-music/SKILL.md): composition and revision
+  guidance for the local authoring tools.
+- [FX research archive](../research/fx/README.md): architecture decisions,
+  captured measurements and historical FX port notes.

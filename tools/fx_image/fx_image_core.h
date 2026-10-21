@@ -2,10 +2,11 @@
  * fx_image_core.h - maintainable FX data-image packing for the finite-v1
  * compact FX music stream (ATMlib2FX-hlh.10).
  *
- * Productionizes the fixed-fixture packer research/fx/tools/fx_make_fxdata.c
- * (read-only reference): instead of a hard-coded test bitmap, the caller
- * supplies a stream binary plus a real bitmap/image input, and the tool owns
- * the layout, data-page placement, 24-bit extent arithmetic and metadata.
+ * Productionizes the retired fixed-fixture packer; the retained reference
+ * implementation for parity tests is tests/fx_image/reference/fx_make_fxdata.c.
+ * Instead of a hard-coded test bitmap, the caller supplies a stream binary plus
+ * a real bitmap/image input, and the tool owns the layout, data-page placement,
+ * 24-bit extent arithmetic and metadata.
  *
  * Ownership and layout follow the pinned contract in
  * research/fx/fx-architecture-decision.md ("hlh.6 review", item 4):

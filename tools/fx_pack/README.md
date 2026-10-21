@@ -2,10 +2,8 @@
 
 Supported host converter (`ATMlib2FX-hlh.7`) for the pinned compact,
 directly-consumed FX music stream selected by `ATMlib2FX-hlh.6`. It replaces
-the fixed-fixture spike converter
-(`research/fx/tools/fx_compact_spike/fx_compile_compact.c`): the score is an
-argument, the encoder is a reusable library, and every rejection names the
-source event.
+the retired fixed-fixture spike converter: the score is an argument, the encoder
+is a reusable library, and every rejection names the source event.
 
 Contract and framing live in
 [`research/fx/fx-architecture-decision.md`](../../research/fx/fx-architecture-decision.md)
@@ -25,14 +23,14 @@ No network, no installs, no git. Outputs stay under `build/` (ignored).
 ```sh
 # From a song header (modern full-format example):
 build/fx-port/pack/fx_pack \
-  --song examples/arduino/songs/song01_sfx/song.h --symbol score \
+  --song tests/fx_pack/fixtures/song01_sfx/song.h --symbol score \
   --out build/fx-port/pack/song01_sfx/stream.bin \
   --meta build/fx-port/pack/song01_sfx/meta.json \
   --input-bin build/fx-port/pack/song01_sfx/input.bin
 
 # Legacy pre-2.0 raw tracker score:
 build/fx-port/pack/fx_pack \
-  --song examples/arduino/songs/song01/song.h --symbol music \
+  --song tests/fx_pack/fixtures/song01/song.h --symbol music \
   --out build/fx-port/pack/song01/stream.bin
 
 # Flat score blob (no runtime extraction):
@@ -74,7 +72,7 @@ device preflight applies before anything is written.
 
 2. **Legacy ATMlib v1 raw tracker layout** — the pre-2.0 `Song music[]` form
    (`<track-count> <u16 LE offsets relative to pattern-data start> <4 entry
-   tracks> <tracks>`), which is what `examples/arduino/songs/song01/song.h`
+   tracks> <tracks>`), which is what `tests/fx_pack/fixtures/song01/song.h`
    uses. The loader translates the pre-2.0 command encoding to modern bytes
    (including the CALL/REPEAT operand order and shared
    `PATTERN_END`/RETURN/STOP semantics), so the shared encoder and device
@@ -182,7 +180,7 @@ tests/fx_pack/run-tests.sh
 ```
 
 Shell + C only. The C selftest compiles the real device decoder
-(`src/atm_synth.c` with `ATM_HAS_FX_COMPACT=1`), ports the retained
+(`src/atm_synth.c`), ports the retained
 `compact_format_test.c` checks, and covers:
 
 * gap boundaries `0/1/31/32/33/127/128/254/255/256/257/0x7EFE/0x7EFF/0x7F00/
@@ -208,8 +206,8 @@ stops instead of hanging).
 
 ## Not covered
 
-Pause/replacement/SFX (`ATMlib2FX-hlh.9`, implemented in the device backend),
-the general authoring input matrix, packing tooling and game fit
+Pause/replacement behavior (device backend), the general authoring input
+matrix, packing tooling and game fit
 (`ATMlib2FX-hlh.10`/`.11`). A stream is shippable only if its measured worst
 service window fits the ring; the converter reports the window but does not
 reject a stream whose per-record lengths fit while a multi-tick window does not

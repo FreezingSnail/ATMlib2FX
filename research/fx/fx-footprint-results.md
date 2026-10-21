@@ -1,5 +1,8 @@
 # Original ATMlib2 footprint and playback baseline
 
+> Historical record. The spike code was removed; commands and paths below refer
+> to the retired research lane. Current contract: [FX music integration](../../docs/fx/integration.md).
+
 Tracking: `ATMlib2FX-hlh.1`. Research context: `research/fx/fx-port-research.md`.
 Measurement date: 2026-10-16.
 

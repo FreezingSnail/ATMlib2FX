@@ -22,7 +22,7 @@ Pipeline per song, in catalog order:
 The committed sketch header (``jukebox_fx_songs.h``) is the packer index
 (offset/length/stream-loop flag per song) merged with the catalog display names
 and folders (sketch PROGMEM) and the per-song loop length. Display text is
-ASCII-folded exactly as ``jukebox.py`` folds the PROGMEM jukebox table.
+ASCII-folded for the 6x8 on-board font.
 
 Host-only / stdlib-only: nothing here changes AVR runtime, SRAM or flash.
 Generated artifacts land under ``--out-dir`` except the header, which is copied
@@ -37,6 +37,7 @@ toolchain by ``tests/music_authoring/test_fx_jukebox.py``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -44,9 +45,8 @@ from pathlib import Path
 
 # This module lives inside the ``music_authoring`` package directory, so running
 # it as a script would put that directory on ``sys.path[0]`` and shadow the
-# standard-library ``inspect`` module that ``dataclasses`` imports (the package
-# also ships an ``inspect.py``).  Drop the script's own directory and expose the
-# package parent instead, exactly as ``jukebox.py`` does.  This must happen
+# standard-library ``inspect`` module that ``dataclasses`` imports. Drop the
+# script's own directory and expose the package parent instead.  This must happen
 # before ``dataclasses`` is imported.
 _HERE = Path(__file__).resolve().parent
 _TOOLS_DIR = _HERE.parent
@@ -56,7 +56,72 @@ if str(_TOOLS_DIR) not in sys.path:
 
 from dataclasses import dataclass  # noqa: E402
 
-from music_authoring.jukebox import ascii_c_string, load_catalog  # noqa: E402
+
+CATALOG_FORMAT = "atmlib-song-library-catalog"
+
+
+class JukeboxError(Exception):
+    """Structured generator failure carrying an exit code."""
+
+    def __init__(self, code: str, message: str, exit_code: int = 2):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.exit_code = exit_code
+
+
+_FOLD = {
+    0x2014: "-", 0x2013: "-",
+    0x2018: "'", 0x2019: "'",
+    0x201C: '"', 0x201D: '"',
+    0x2026: "...",
+}
+
+
+def fold_text(text: str) -> str:
+    """ASCII-fold a display string (keep 0x20..0x7E, else '?')."""
+    out: list[str] = []
+    for ch in text:
+        code_point = ord(ch)
+        if code_point in _FOLD:
+            out.append(_FOLD[code_point])
+        elif 0x20 <= code_point <= 0x7E:
+            out.append(ch)
+        else:
+            out.append("?")
+    return "".join(out)
+
+
+def c_escape(text: str) -> str:
+    """Escape backslash and double quote for a C string literal body."""
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def ascii_c_string(text: str) -> str:
+    """Fold to ASCII, then escape for inclusion inside a C string literal."""
+    return c_escape(fold_text(text))
+
+
+def load_catalog(catalog_path: str) -> tuple[dict, str, bytes]:
+    """Read a catalog; return (document, sha256_hex, raw_bytes)."""
+    path = Path(catalog_path)
+    if not path.is_file():
+        raise JukeboxError("CATALOG_MISSING", f"catalog {path} not found")
+    raw = path.read_bytes()
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise JukeboxError("CATALOG_INVALID", f"cannot read catalog {path}: {exc}")
+    if data.get("format") != CATALOG_FORMAT:
+        raise JukeboxError(
+            "CATALOG_INVALID",
+            f"catalog format is {data.get('format')!r}, expected {CATALOG_FORMAT!r}",
+        )
+    entries = data.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise JukeboxError("CATALOG_INVALID", "catalog has no entries")
+    return data, hashlib.sha256(raw).hexdigest(), raw
+
 
 TOOL_NAME = "atm-music-fx-jukebox"
 TOOL_VERSION = "1.0.0"
@@ -122,7 +187,7 @@ class SongRecord:
 
 
 def is_identifier(name):
-    """True when ``name`` is a C identifier (same check as ``jukebox.py``)."""
+    """True when ``name`` is a C identifier."""
     if not name or not (name[0].isalpha() or name[0] == "_"):
         return False
     return all(ch.isalnum() or ch == "_" for ch in name)

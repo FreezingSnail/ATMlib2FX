@@ -14,9 +14,10 @@
  * Common options: [--bitmap-format auto|pbm|raw] [--width N --height N]
  *                 [--bitmap-header] [--chip-bytes N] [--page-bytes N]
  *
- * Replaces the fixed-fixture research/fx/tools/fx_make_fxdata.c (read-only
- * reference). See tools/fx_image/README.md and research/fx/fx-architecture-
- * decision.md ("hlh.6 review", item 4).
+ * Replaces the retired fixed-fixture spike packer; the retained reference
+ * implementation for parity tests is tests/fx_image/reference/fx_make_fxdata.c.
+ * See tools/fx_image/README.md and
+ * research/fx/fx-architecture-decision.md ("hlh.6 review", item 4).
  *
  * No network, no installs, no git. Outputs are written under build/.
  */

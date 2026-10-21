@@ -301,11 +301,6 @@ class HeaderTests(unittest.TestCase):
         again = fx_jukebox.render_header(self.records, "ab" * 32, 65534, 370)
         self.assertEqual(again, self.header)
 
-    def test_header_shares_folding_with_progmem_jukebox(self):
-        from music_authoring.jukebox import fold_text
-
-        self.assertIn('"' + fold_text(self.records[0].name) + '"', self.header)
-
 
 class AdapterFailureTests(unittest.TestCase):
     def setUp(self):

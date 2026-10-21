@@ -1,24 +1,17 @@
 # Examples
 
-## Compose, view, and listen
+## FX playback
 
-Open the [offline song player](music_authoring/player.html) to review all twenty
-JSON compositions, or read the [song library index](music_authoring/README.md).
-Each composition has its source, standalone review, and matching preview media.
-The [authoring guide](../docs/music-authoring-guide.md) explains the CLI workflow.
+- [`arduino/jukebox_fx/`](arduino/jukebox_fx/): all 21 catalog songs in one FX
+  data image, with browse, restart and pause controls.
+- [`fx/music_graphics/`](fx/music_graphics/): compact FX stream plus bitmap
+  service in one sketch.
 
-## Arduino playback demos
+Both sketches require the library and an ArduboyFX data image. See each
+directory for build flags and image generation.
 
-The [Arduino demos](arduino/) contain the existing effect directories
-(`arpeggio`, `drums`, `frequencySlides`,
-`Glissando`, `gotoAdvanced`, `noteCut`, `tempo`, `transposition`, `tremolo`,
-`vibrato`, `volumeSlides`) demonstrating the macro score API. `arduino/songs/`
-contains complete music/SFX examples; `arduino/midi_synth/` contains the MIDI
-synthesizer demo; `arduino/jukebox/` is a two-set jukebox that plays all twenty
-authored songs on hardware.
-Open an individual sketch directory in Arduino with the library installed.
-Existing music and attribution are preserved.
+## Song sources
 
-FX measurement sketches and trace harnesses are in
-[`research/fx/`](../research/fx/). Developer fixtures and the manual listening
-check sketch are in [`tests/`](../tests/).
+[`music_authoring/`](music_authoring/README.md) holds the JSON sources and FX
+fixtures. The catalog drives the jukebox image. There is no PROGMEM score
+example in this repository.

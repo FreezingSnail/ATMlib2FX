@@ -22,7 +22,7 @@ cd "$REPO_ROOT"
 
 OUT="build/cmd_parse"
 CC="${CC:-cc}"
-SHIM="research/fx/footprint_baseline/trace/avr_shim"
+SHIM="tests/support/avr_shim"
 
 mkdir -p "$OUT"
 

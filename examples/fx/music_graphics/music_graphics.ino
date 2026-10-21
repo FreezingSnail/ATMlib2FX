@@ -12,8 +12,8 @@
  *     complete SPI transactions, with sample interrupts enabled;
  *   - the refill deadline is at least one complete record per frame
  *     (52 fps is ~19.23 ms);
- *   - finite songs only. Global loops are NOT available yet (owned by
- *     ATMlib2FX-hlh.8); this sketch never loops the stream.
+ *   - this demo plays a finite stream; the decoder also supports global loops
+ *     when built with ATM_FX_COMPACT_LOOP=1.
  *
  * Build inputs (see README.md): convert the score with tools/fx_pack, pack it
  * with tools/fx_image, then build with -DFX_IMAGE_USE_HEADER and
@@ -22,9 +22,8 @@
  *   FX_DATA_PAGE FX_BITMAP_OFFSET FX_BITMAP_WIDTH FX_BITMAP_HEIGHT
  *   FX_STREAM_OFFSET FX_STREAM_LEN
  *
- * The library backend must be enabled with -DATM_HAS_FX_COMPACT=1; the optional
- * -DATM_FX_COMPACT_DIAG=1 adds the one-shot serial report used by the device
- * check. The default PROGMEM library build is untouched by any of this.
+ * The optional -DATM_FX_COMPACT_DIAG=1 adds
+ * the one-shot serial report used by the device check.
  */
 #include <Arduino.h>
 #include <Arduboy2.h>

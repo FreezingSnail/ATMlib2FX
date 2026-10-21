@@ -5,7 +5,7 @@
 #
 # Two independent checks over the *packed* image and its per-song streams:
 #
-#   1. Host device-decoder trace (research/fx/fx_compact_spike/loops/compact_trace.c,
+#   1. Host device-decoder trace (tests/fx_jukebox/trace/compact_trace.c,
 #      the same streaming decoder the device runs) for intro + two full loop
 #      cycles of one Creature Gatherer loop (overworld) and Snapdragon Sprint:
 #      zero underruns / zero error, and consecutive loop cycles byte-identical
@@ -41,8 +41,8 @@ ARDUINO_CLI="${ARDUINO_CLI:-$(command -v arduino-cli)}"
 FQBN="arduboy-homemade:avr:arduboy-fx"
 AVR_BIN="$HOME/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/bin"
 AVR_NM="$AVR_BIN/avr-nm"
-LOOPS="research/fx/fx_compact_spike/loops"
-SHIM="research/fx/fx_stream_spike/trace/avr_shim"
+LOOPS="tests/fx_jukebox/trace"
+SHIM="tests/support/avr_shim"
 HARNESS_SRC="tests/fx_image/absim_harness.cpp"
 RING=64
 
@@ -159,7 +159,7 @@ if [ -n "$HARNESS_BIN" ]; then
     # frames at 60 fps to clear intro + two cycles, ~5% margin; ms budget +15%.
     frame=$(awk -v c="$cycle" -v r="$rate" 'BEGIN{printf "%d", int(3*c/r*60*1.05)+2}')
     ms=$(awk -v c="$cycle" -v r="$rate" 'BEGIN{printf "%d", int(3*c/r*1000*1.15)+1000}')
-    flags="-DATM_HAS_FX_COMPACT=1 -DATM_FX_COMPACT_LOOP=1 -DATM_FX_COMPACT_RING=$RING -DATM_FX_COMPACT_DIAG=1 -DJUKEBOX_FX_START_SONG=$index -DFX_REPORT_FRAME=$frame"
+    flags="-DATM_FX_COMPACT_LOOP=1 -DATM_FX_COMPACT_RING=$RING -DATM_FX_COMPACT_DIAG=1 -DJUKEBOX_FX_START_SONG=$index -DFX_REPORT_FRAME=$frame"
     build_path="$OUT/avr-$song"; out_dir="$OUT/out-$song"
     log "   $song: start=$index report_frame=$frame absim_ms=$ms (need >= $needed ticks)"
     "$ARDUINO_CLI" compile --fqbn "$FQBN" --library . \
@@ -200,7 +200,7 @@ fi
 log
 log "-- 3. documented sketch sizes (ring $RING) --"
 for variant in prod diag; do
-  flags="-DATM_HAS_FX_COMPACT=1 -DATM_FX_COMPACT_LOOP=1 -DATM_FX_COMPACT_RING=$RING"
+  flags="-DATM_FX_COMPACT_LOOP=1 -DATM_FX_COMPACT_RING=$RING"
   [ "$variant" = diag ] && flags="$flags -DATM_FX_COMPACT_DIAG=1"
   "$ARDUINO_CLI" compile --fqbn "$FQBN" --library . \
     --build-path "$OUT/avr-$variant" --output-dir "$OUT/out-$variant" \

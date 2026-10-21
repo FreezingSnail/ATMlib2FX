@@ -1,14 +1,13 @@
-# Research and experiments
+# FX research archive
 
 | Area | Entry point |
 | --- | --- |
-| FX storage and playback | [FX research index](fx/README.md): decisions, measurements, spike sketches, converters, and reproduction scripts |
-| Music authoring audio investigation | [Recorded Piezo verification](music-authoring/piezo/SUMMARY.md) |
+| FX storage and playback | [FX research archive](fx/README.md): architecture decisions, measurements, and captured evidence |
 
-These files preserve experimental work and its provenance. Retained local
+These files preserve the FX port's measurements and provenance. Retained local
 measurement artifacts remain under the ignored `build/` directory. Captured
-reports, hashes, logs, and generated HTML can contain paths from their original
-run; those records have not been rewritten to look like new measurements.
+reports, hashes and logs can contain paths from their original run; those records
+have not been rewritten to look like new measurements.
 
-Packaged authoring tools live in [`tools/`](../tools/README.md), and example music
-lives in [`examples/`](../examples/README.md).
+The maintained authoring tools live in [`tools/`](../tools/README.md); song
+sources live in [`examples/music_authoring/`](../examples/music_authoring/).

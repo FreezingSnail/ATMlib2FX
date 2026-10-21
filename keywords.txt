@@ -1,20 +1,20 @@
 #######################################
 # Datatypes (KEYWORD1)
 #######################################
-ATMsynth	KEYWORD1
-Oscillator	KEYWORD1
-Melody	KEYWORD1
+atm_synth_state	KEYWORD1
+atm_channel_state	KEYWORD1
+atm_fx_compact_state	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
 #######################################
-play	KEYWORD2
-playPause	KEYWORD2
-stop	KEYWORD2
-toggleMute	KEYWORD2
-
-#######################################
-# Instances (KEYWORD2)
-#######################################
-osc	KEYWORD2
-pcm	KEYWORD2
+atm_synth_setup	KEYWORD2
+atm_synth_stop_score	KEYWORD2
+atm_synth_set_tempo	KEYWORD2
+atm_synth_get_cue	KEYWORD2
+atm_synth_check_cue	KEYWORD2
+atm_fx_compact_play	KEYWORD2
+atm_fx_compact_service	KEYWORD2
+atm_fx_compact_stop	KEYWORD2
+atm_fx_compact_pause	KEYWORD2
+atm_fx_compact_resume	KEYWORD2

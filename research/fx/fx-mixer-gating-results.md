@@ -1,5 +1,8 @@
 # Compile-time mixer gating — spike results (ATMlib2FX-hlh.4)
 
+> Historical record. The spike code was removed; commands and paths below refer
+> to the retired research lane. Current contract: [FX music integration](../../docs/fx/integration.md).
+
 **Recommendation: GO.** Compile-gated per-channel and noise/LFSR mixer blocks
 remove real flash and real ISR cycles, the all-on default is provably
 byte-identical to the pre-flag library, SRAM is unchanged, and every gated

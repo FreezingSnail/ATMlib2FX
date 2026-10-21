@@ -1,5 +1,8 @@
 # FX playback architecture decision
 
+> Historical record. The spike code was removed; commands and paths below refer
+> to the retired research lane. Current contract: [FX music integration](../../docs/fx/integration.md).
+
 Date: 2026-10-17. Decision bead: `ATMlib2FX-hlh.2`.
 
 **Decision: do not adopt the current 64-byte compiled-stream prototype as the

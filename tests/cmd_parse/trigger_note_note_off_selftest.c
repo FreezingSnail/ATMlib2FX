@@ -63,6 +63,13 @@ void osc_get_tick_callback(const uint8_t callback_idx, osc_tick_callback *cb, vo
 	}
 }
 
+/* Unused by these tests; the compact decoder requires a byte source. */
+void atm_fx_compact_fetch(uint32_t offset, uint8_t *dst, uint8_t n)
+{
+	(void)offset;
+	memset(dst, 0, n);
+}
+
 #if !ATM_HAS_FX_SLIDE
 #error "trigger_note_note_off_selftest requires ATM_HAS_FX_SLIDE"
 #endif

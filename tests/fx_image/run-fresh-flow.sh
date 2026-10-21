@@ -11,8 +11,7 @@
 #   3. build examples/fx/music_graphics with arduino-cli
 #      (FQBN arduboy-homemade:avr:arduboy-fx);
 #   4. run the absim harness and require zero underruns and zero decoder error;
-#   5. report image/ELF sizes, hashes, and confirm the default PROGMEM library
-#      build is untouched (no src/ changes).
+#   5. report image/ELF sizes and hashes.
 #
 # No network, no installs, no git writes. Everything lands under
 # build/fx-port/image/. Usage: tests/fx_image/run-fresh-flow.sh [ms]
@@ -27,7 +26,7 @@ OUT="build/fx-port/image"
 FQBN="arduboy-homemade:avr:arduboy-fx"
 ARDENS_ROOT="${ARDENS_ROOT:-$HOME/code/arduboy/Ardens}"
 ARDUINO_CLI="${ARDUINO_CLI:-/opt/homebrew/bin/arduino-cli}"
-SONG="examples/arduino/songs/song01_sfx/song.h"
+SONG="tests/fx_pack/fixtures/song01_sfx/song.h"
 PBM="examples/fx/art/note_32x16.pbm"
 SKETCH="examples/fx/music_graphics"
 AVR_BIN="$HOME/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/bin"
@@ -68,7 +67,7 @@ log "convert: $(cat "$OUT/convert.log")"
 log "pack   : $(tr '\n' ' ' < "$OUT/fxdata.meta")"
 
 # ---- 3. build the example --------------------------------------------------
-FLAGS="-DATM_HAS_FX_COMPACT=1 -DATM_FX_COMPACT_DIAG=1 -DFX_IMAGE_USE_HEADER -I$REPO_ROOT/$OUT"
+FLAGS="-DATM_FX_COMPACT_DIAG=1 -DFX_IMAGE_USE_HEADER -I$REPO_ROOT/$OUT"
 "$ARDUINO_CLI" compile --fqbn "$FQBN" --library . \
   --build-path "$OUT/avr-music_graphics" --output-dir "$OUT/out-music_graphics" \
   --build-property "compiler.cpp.extra_flags=$FLAGS" \
@@ -86,20 +85,13 @@ log "build  : program=${PROGRAM}B sram=${SRAM}B elf=$(shasum -a 256 "$ELF" | awk
 ARDENS_ROOT="$ARDENS_ROOT" "$HERE/run-absim.sh" "$ELF" "$OUT/fxdata.bin" "$MS" \
   2>&1 | tee -a "$RESULT"
 
-# ---- 5. sizes, hashes, default-build check --------------------------------
+# ---- 5. sizes and hashes --------------------------------------------------
 log ""
 log "sizes:"
 log "  stream.bin    $(wc -c < "$OUT/stream.bin" | tr -d ' ') B  sha256 $(shasum -a 256 "$OUT/stream.bin" | awk '{print $1}')"
 log "  fxdata.bin    $(wc -c < "$OUT/fxdata.bin" | tr -d ' ') B  sha256 $(shasum -a 256 "$OUT/fxdata.bin" | awk '{print $1}')"
 log "  sketch ELF    ${PROGRAM} B program / ${SRAM} B SRAM  sha256 $(shasum -a 256 "$ELF" | awk '{print $1}')"
 
-DEFAULT_DIFF="$(git status --porcelain -- src/ library.properties library.json || true)"
-if [ -n "$DEFAULT_DIFF" ]; then
-  log "default build: CHANGED (unexpected)"
-  log "$DEFAULT_DIFF"
-  exit 1
-fi
-log "default build: untouched (no src/ or default-path changes)"
 
 log ""
 log "results: $RESULT"

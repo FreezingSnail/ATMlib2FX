@@ -2,11 +2,7 @@
  * jukebox_fx - browse every catalog song streamed from the FX chip
  * (ATMlib2FX-hlh.14).
  *
- * The PROGMEM jukebox (examples/arduino/jukebox) cannot fit all twenty-one
- * catalog scores in one flash image (33,594 bytes of PROGMEM asset data alone
- * vs a 29,696-byte flash cap), so it ships two build-time sets. This sketch
- * keeps the same controls and display but stores **no** score bytes in
- * PROGMEM: every score lives in one FX data image and is streamed from the FX
+ * Every catalog score lives in one FX data image and is streamed from the FX
  * section by the compact decoder, per the pinned integration contract
  * (docs/fx/integration.md):
  *
@@ -222,8 +218,8 @@ static void draw_ui()
 void setup()
 {
 	arduboy.begin();
-	/* Same frame pacing as the PROGMEM jukebox; the compact service runs once
-	 * per frame, comfortably inside the pinned refill deadline. */
+	/* The compact service runs once per frame, comfortably inside the
+	 * pinned refill deadline. */
 	arduboy.setFrameRate(60);
 	arduboy.audio.on();
 

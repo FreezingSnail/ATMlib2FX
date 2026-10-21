@@ -1,60 +1,54 @@
 {
   "format": "atmlib-song-library-catalog",
   "version": 1,
-  "note": "Example compositions bundled by tools/music_authoring/library_player.py. Source song.json and matching preview/preview.json + preview/preview.wav live together under examples/music_authoring/. Paths resolve against the repository root. Catalog, sources and previews are trusted local inputs; the bundler embeds inert data and renders labels as text. Captured preview reports retain original run paths.",
+  "note": "Compact FX song sources. Paths resolve against the repository root; the FX jukebox generator builds every entry from its source JSON.",
   "entries": [
     {
       "id": "overworld",
-      "name": "Gatherer's Road \u2014 Overworld",
+      "name": "Gatherer's Road — Overworld",
       "category": "Creature Gatherer FX",
       "context": "Brisk roaming theme; chord-tone bass under the minor-sixth motif and an E pickup into the opening. A minor, 136.36 BPM, 16 bars, 28.16 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/overworld/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/overworld/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "combat",
-      "name": "Clash of Gatherers \u2014 Combat",
+      "name": "Clash of Gatherers — Combat",
       "category": "Creature Gatherer FX",
       "context": "Driving battle theme; slower than the original rush, with fewer chromatic clashes and a final upbeat. D minor, 176.47 BPM, 16 bars, 21.76 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/combat/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/combat/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "exploration",
-      "name": "Hollow Depths \u2014 Cave Exploration",
+      "name": "Hollow Depths — Cave Exploration",
       "category": "Creature Gatherer FX",
       "context": "Spacious cave theme; slower phrases and open harmony, with a quiet pickup instead of a terminal hold. A minor, 83.33 BPM, 12 bars, 34.56 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/exploration/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/exploration/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "victory",
-      "name": "Gathered! \u2014 Victory",
+      "name": "Gathered! — Victory",
       "category": "Creature Gatherer FX",
       "context": "Bright repeating victory fanfare; resolved upper harmony and a fifth leading into the tonic. C major, 187.50 BPM, 4 bars, 5.12 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/victory/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/victory/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "defeat",
-      "name": "Lost \u2014 Defeat",
+      "name": "Lost — Defeat",
       "category": "Creature Gatherer FX",
       "context": "Slow descending loss cue; consonant sustained notes and a quiet fifth leading back into the opening. A minor, 68.18 BPM, 4 bars, 14.08 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/defeat/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/defeat/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "showcase",
-      "name": "Showcase \u2014 Twilight (A minor)",
+      "name": "Showcase — Twilight (A minor)",
       "category": "ATMlib2FX examples",
       "context": "Four-channel demonstration; softened long seconds/sevenths against the bass. A minor, 125.00 BPM, 4 bars, 7.68 s per loop.",
       "source": "examples/music_authoring/showcase/song.json",
-      "preview": "examples/music_authoring/showcase/preview",
       "folder": "Authoring Examples"
     },
     {
@@ -63,133 +57,118 @@
       "category": "ATMlib2FX examples",
       "context": "Two-bar teaching loop; stable thirds/fifths, a full-length bass and gentler percussion. C major, 125.00 BPM, 2 bars, 3.84 s per loop.",
       "source": "examples/music_authoring/basic/song.json",
-      "preview": "examples/music_authoring/basic/preview",
       "folder": "Authoring Examples"
     },
     {
       "id": "guide",
-      "name": "Guide sketch \u2014 one-bar example",
+      "name": "Guide sketch — one-bar example",
       "category": "ATMlib2FX examples",
       "context": "One-bar teaching loop; lower supporting harmony replaces the doubled unison. C major, 100.00 BPM, 1 bar, 2.4 s per loop.",
       "source": "examples/music_authoring/guide/song.json",
-      "preview": "examples/music_authoring/guide/preview",
       "folder": "Authoring Examples"
     },
     {
       "id": "cg_opening",
-      "name": "First Light \u2014 Opening",
+      "name": "First Light — Opening",
       "category": "Creature Gatherer FX",
       "context": "Title theme; a full opening melody, a lower reprise and cleaner chord transitions. E minor, 115.38 BPM, 24 bars, 49.92 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/opening/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/opening/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "cg_village",
-      "name": "Hearth and Hollow \u2014 Village",
+      "name": "Hearth and Hollow — Village",
       "category": "Creature Gatherer FX",
       "context": "Gentle home-village tune; chord-aligned lead and a dominant turnaround into the opening. C major, 93.75 BPM, 8 bars, 20.48 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/village/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/village/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "cg_forest",
-      "name": "Greenwake Thicket \u2014 Forest",
+      "name": "Greenwake Thicket — Forest",
       "category": "Creature Gatherer FX",
       "context": "Lively woodland call and response; smoother countervoice, reduced clashes and a lighter pulse tone. A Dorian, 130.43 BPM, 16 bars, 29.44 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/forest/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/forest/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "cg_coast",
-      "name": "Tideline Ramble \u2014 Coast",
+      "name": "Tideline Ramble — Coast",
       "category": "Creature Gatherer FX",
       "context": "Flowing shore melody; four accidental repeated-note interruptions joined into holds, smoother bass, quieter accompaniment and consistent short lead gaps. G major, 107.14 BPM, 12 bars, 26.88 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/coast/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/coast/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "cg_marsh",
-      "name": "Marsh at Dusk \u2014 wetland gathering",
+      "name": "Marsh at Dusk — wetland gathering",
       "category": "Creature Gatherer FX",
-      "context": "Rewritten eight-bar wetland melody in natural E minor; a clear question-and-answer phrase over Em\u2013C\u2013G\u2013D / Em\u2013Am\u2013D\u2013Em, held roots, quiet harmony and sparse mist noise. E minor, 78.95 BPM, 8 bars, 24.32 s per loop.",
+      "context": "Rewritten eight-bar wetland melody in natural E minor; a clear question-and-answer phrase over Em–C–G–D / Em–Am–D–Em, held roots, quiet harmony and sparse mist noise. E minor, 78.95 BPM, 8 bars, 24.32 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/marsh/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/marsh/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "cg_ruins",
-      "name": "Ancient Observatory \u2014 ruins boss gate",
+      "name": "Ancient Observatory — ruins boss gate",
       "category": "Creature Gatherer FX",
       "context": "Ruins theme; retained leading-tone tension, softer diminished passages and a lower upper register. B minor, 125.00 BPM, 24 bars, 46.08 s per loop.",
       "source": "examples/music_authoring/creature_gatherer/ruins/song.json",
-      "preview": "examples/music_authoring/creature_gatherer/ruins/preview",
       "folder": "Creature Gatherer"
     },
     {
       "id": "pocket_nursery",
       "name": "Pocket Nursery",
-      "category": "Creature Frontiers \u2014 original RPG cues",
-      "context": "home village / creature nursery. D major, 88.24 BPM, 3/4, 16 bars, 32.64 s. 3/4 waltz, root\u2013chord accompaniment, round pulse lead, quiet answering voice, restrained noise brushes.",
+      "category": "Creature Frontiers — original RPG cues",
+      "context": "home village / creature nursery. D major, 88.24 BPM, 3/4, 16 bars, 32.64 s. 3/4 waltz, root–chord accompaniment, round pulse lead, quiet answering voice, restrained noise brushes.",
       "source": "examples/music_authoring/creature_frontiers/pocket_nursery/song.json",
-      "preview": "examples/music_authoring/creature_frontiers/pocket_nursery/preview",
       "folder": "Creature Frontiers"
     },
     {
       "id": "cloverbound_route",
       "name": "Cloverbound Route",
-      "category": "Creature Frontiers \u2014 original RPG cues",
+      "category": "Creature Frontiers — original RPG cues",
       "context": "daytime meadow / gathering route. G major, 136.36 BPM, 4/4, 16 bars, 28.16 s. Dotted hook, eighth-note chord arpeggios, offbeat bass, narrow/round pulse contrast and backbeat noise.",
       "source": "examples/music_authoring/creature_frontiers/cloverbound_route/song.json",
-      "preview": "examples/music_authoring/creature_frontiers/cloverbound_route/preview",
       "folder": "Creature Frontiers"
     },
     {
       "id": "lanternfen",
       "name": "Lanternfen",
-      "category": "Creature Frontiers \u2014 original RPG cues",
+      "category": "Creature Frontiers — original RPG cues",
       "context": "dusk wetland / rare creature habitat. E minor, 75.00 BPM, 4/4, 12 bars, 38.40 s. Spacious gates, alternating low/high-duty lead color, sparse lower-register echoes, held root bass and tiny noise rustles; raised seventh at dominant cadences.",
       "source": "examples/music_authoring/creature_frontiers/lanternfen/song.json",
-      "preview": "examples/music_authoring/creature_frontiers/lanternfen/preview",
       "folder": "Creature Frontiers"
     },
     {
       "id": "bramble_skirmish",
       "name": "Bramble Skirmish",
-      "category": "Creature Frontiers \u2014 original RPG cues",
+      "category": "Creature Frontiers — original RPG cues",
       "context": "wild creature encounter. D minor, 176.47 BPM, 4/4, 16 bars, 21.76 s. Fast gated riff, syncopated root/fifth bass, sixteenth-note broken chords, stepped duty accents and snare/noise fills; harmonic-minor dominant.",
       "source": "examples/music_authoring/creature_frontiers/bramble_skirmish/song.json",
-      "preview": "examples/music_authoring/creature_frontiers/bramble_skirmish/preview",
       "folder": "Creature Frontiers"
     },
     {
       "id": "prism_burrow",
       "name": "Prism Burrow",
-      "category": "Creature Frontiers \u2014 original RPG cues",
+      "category": "Creature Frontiers — original RPG cues",
       "context": "crystal cave / hidden nest exploration. F# minor, 100.00 BPM, 4/4, 16 bars, 38.40 s. Displaced quarter-note arpeggios, register-separated melody, quiet delayed answers, long bass pedals and sparse noise sparkles; E# is spelled F in the score.",
       "source": "examples/music_authoring/creature_frontiers/prism_burrow/song.json",
-      "preview": "examples/music_authoring/creature_frontiers/prism_burrow/preview",
       "folder": "Creature Frontiers"
     },
     {
       "id": "new_wings",
       "name": "New Wings",
-      "category": "Creature Frontiers \u2014 original RPG cues",
+      "category": "Creature Frontiers — original RPG cues",
       "context": "evolution grove / new companion celebration. A major, 150.00 BPM, 4/4, 12 bars, 19.20 s. Octave-lift fanfare, chord-tone countermelody, alternating pulse duty and volume accents, bright arpeggios, root/octave bass and rising noise fill.",
       "source": "examples/music_authoring/creature_frontiers/new_wings/song.json",
-      "preview": "examples/music_authoring/creature_frontiers/new_wings/preview",
       "folder": "Creature Frontiers"
     },
     {
       "id": "snapdragon_sprint",
       "name": "Snapdragon Sprint",
-      "category": "Creature Frontiers \u2014 original RPG cues",
+      "category": "Creature Frontiers — original RPG cues",
       "context": "speedy dash / time-trial minigame. E major, 187.50 BPM, 4/4, 16 bars, 20.48 s. Engine arpeggio on the middle voice, staccato pulse lead, note-cut chatter accelerando into the loop, volume-slide swell with tremolo shimmer and a crisp noise backbeat.",
       "source": "examples/music_authoring/creature_frontiers/snapdragon_sprint/song.json",
-      "preview": "examples/music_authoring/creature_frontiers/snapdragon_sprint/preview",
       "folder": "Creature Frontiers"
     }
   ]

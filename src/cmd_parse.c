@@ -1,6 +1,6 @@
 
 /* compile only when included by atm_synth.c */
-#ifdef ATM_PATTERN_STACK_DEPTH
+#ifdef ATM_CMD_PARSE_IMPL
 
 #include "atm_cmd_constants.h"
 
@@ -57,26 +57,9 @@ static void process_immediate_cmd(const uint8_t ch_index, const uint8_t cmd_id, 
 			break;
 
 		case ATM_CMD_I_PATTERN_END:
-#if !ATM_HAS_FX_STREAM_BACKEND
-			if (pattern_repetition_counter(ch) > 0) {
-				/* Repeat track */
-				pattern_repetition_counter(ch)--;
-				pattern_cmd_ptr(ch) = get_track_start_ptr(score_state, pattern_index(ch));
-			} else {
-				/* Check stack depth */
-				if (ch->pstack_index == 0) {
-					goto stop_channel;
-				} else {
-					/* pop stack */
-					ch->pstack_index--;
-				}
-			}
-#else
-			/* Compiled stream: PATTERN_END is only emitted for a real channel
-			 * stop. Calls, repeats and returns were resolved offline. */
+			/* The compact stream emits PATTERN_END only for a real channel
+			 * stop; calls, repeats and returns are resolved offline. */
 			goto stop_channel;
-#endif
-			break;
 
 		case ATM_CMD_I_GLISSANDO_OFF:
 #if ATM_HAS_FX_GLISSANDO
@@ -150,9 +133,8 @@ static void process_1p_cmd(const struct atm_cmd_data *cmd, struct atm_synth_stat
 		}
 
 		case ATM_CMD_1P_SET_CUE:
-			/* CUE latches into the single shared cue byte (upstream
-			 * semantics: score and SFX share the last-cue byte), so a
-			 * cue emitted by an SFX is observable after it stops. */
+			/* CUE latches into the single shared cue byte so game
+			 * code sees the most recent command. */
 			atmlib_state.cue = cmd->params[0];
 			break;
 	}
@@ -160,28 +142,11 @@ static void process_1p_cmd(const struct atm_cmd_data *cmd, struct atm_synth_stat
 
 static void process_np_cmd(const struct atm_cmd_data *cmd, const uint8_t csz, struct atm_synth_state *score_state, struct atm_channel_state *ch)
 {
+	(void)score_state;
 	const enum atm_parametrised_cmd_id_constants cid = cmd->id & 0x0F;
 
 	/* Parametrised commands */
 	switch (cid) {
-		case ATM_CMD_NP_CALL:
-#if !ATM_HAS_FX_STREAM_BACKEND
-			/* ignore call command if the stack is full */
-			if (ch->pstack_index < ATM_PATTERN_STACK_DEPTH-1) {
-				const uint8_t new_track = cmd->params[0];
-				if (new_track != pattern_index(ch)) {
-					const uint8_t new_counter = csz > 1 ? cmd->params[1] : 0;
-					/* push new pattern on stack */
-					ch->pstack_index++;
-					pattern_index(ch) = new_track;
-					pattern_repetition_counter(ch) = new_counter;
-					pattern_cmd_ptr(ch) = get_track_start_ptr(score_state, pattern_index(ch));
-				}
-			}
-			/* if the stack is full and we cannot call, skip the call command */
-#endif
-			break;
-
 		case ATM_CMD_NP_GLISSANDO_ON:
 #if ATM_HAS_FX_GLISSANDO
 			ch->glisConfig = cmd->params[0];
@@ -195,12 +160,6 @@ static void process_np_cmd(const struct atm_cmd_data *cmd, const uint8_t csz, st
 			/* arpeggio or notecut */
 			ch->arpNotes = csz > 1 ? cmd->params[1] : 0xFF;
 			ch->arpCount = 0x00;
-#endif
-			break;
-
-		case ATM_CMD_NP_SET_LOOP_PATTERN:
-#if !ATM_HAS_FX_STREAM_BACKEND && ATM_HAS_FX_LOOP
-			ch->loop_pattern_index = cmd->params[0];
 #endif
 			break;
 
@@ -250,10 +209,8 @@ static void process_np_cmd(const struct atm_cmd_data *cmd, const uint8_t csz, st
 	}
 }
 
-#if ATM_HAS_FX_STREAM_BACKEND
-/* Apply one already-fetched command without touching a traversal pointer. Only
- * the compiled-stream decoder needs this form; the PROGMEM path keeps its exact
- * original process_cmd() below so ordinary library builds are unchanged. */
+/* Apply one command already fetched from the compact stream. Traversal was
+ * resolved offline, so no pattern pointers or stacks are involved. */
 static void apply_cmd(const uint8_t ch_index, const struct atm_cmd_data *cmd, struct atm_synth_state *score_state, struct atm_channel_state *ch)
 {
 	if (cmd->id < ATM_CMD_BLK_DELAY) {
@@ -282,46 +239,5 @@ static void apply_cmd(const uint8_t ch_index, const struct atm_cmd_data *cmd, st
 		process_np_cmd(cmd, csz, score_state, ch);
 	}
 }
-#else
-static void process_cmd(const uint8_t ch_index, const struct atm_cmd_data *cmd, struct atm_synth_state *score_state, struct atm_channel_state *ch)
-{
-	const uint8_t **next_cmd_ptr = &pattern_cmd_ptr(ch);
-	*next_cmd_ptr += 1;
 
-	if (cmd->id < ATM_CMD_BLK_DELAY) {
-		/* 0 … 63 : NOTE ON/OFF */
-		ch->note = cmd->id;
-		trigger_note(cmd->id, ch);
-
-#if ATM_HAS_FX_NOTE_RETRIG
-		/* ARP retriggering */
-		if (ch->arpTiming & 0x20) {
-			ch->arpCount = 0;
-		}
-#endif
-	} else if (cmd->id < ATM_CMD_BLK_IMMEDIATE) {
-		/* delay */
-		ch->delay = cmd->id - 63;
-	} else if (cmd->id < ATM_CMD_BLK_1_PARAMETER) {
-		/* immediate */
-		/* process_immediate_cmd() can modify next_cmd_ptr so increase it first */
-		process_immediate_cmd(ch_index, cmd->id, score_state, ch);
-	} else if (cmd->id < ATM_CMD_BLK_N_PARAMETER) {
-		/* 1 parameter byte command */
-		*next_cmd_ptr += 1;
-		process_1p_cmd(cmd, score_state, ch);
-	} else {
-		const uint8_t csz = ((cmd->id >> 4) & 0x07) + 1;
-		/* n parameter byte command */
-		*next_cmd_ptr += csz;
-		/* process_np_cmd() can modify next_cmd_ptr so increase it first */
-		process_np_cmd(cmd, csz, score_state, ch);
-	}
-}
-
-void ext_synth_command(const uint8_t ch_index, const struct atm_cmd_data *cmd, struct atm_synth_state *score_state, struct atm_channel_state *ch)
-{
-	process_cmd(ch_index, cmd, score_state, ch);
-}
-#endif
 #endif

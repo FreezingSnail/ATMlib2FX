@@ -1,9 +1,7 @@
 """Lower a validated score to a canonical host timeline.
 
 The canonical event list is the single musical interpretation shared by the
-PROGMEM backend, the ``review.json`` viewer payload and the event digest.  The
-browser viewer task (ATMlib2FX-3ii.6) must draw this data rather than parse the
-source again.
+compact FX adapter, the ``review.json`` payload and the event digest.
 
 Canonicalization id: ``atmlib-canonical-events-v1``.
 """
@@ -19,14 +17,11 @@ from .score import (
     CHANNEL_VOICE,
     COMMAND_TYPES,
     EFFECT_TYPES,
-    FX_BACKEND_REASON,
     HOST_LIMITS,
-    RENDER_REASON,
     SCHEMA_VERSION,
     TICK_BASE_HZ,
     TOOL_NAME,
     TOOL_VERSION,
-    VIEWER_REASON,
     ENGINE_NAME,
     Diagnostic,
     Score,
@@ -65,7 +60,7 @@ EFFECT_OP_NAMES = frozenset(EFFECT_ON_OPS.values()) | frozenset(EFFECT_OFF_OPS.v
 COMMAND_OP_NAMES = frozenset(COMMAND_TYPES)
 
 # Same-tick ordering (lower is earlier). Deterministic and documented in
-# docs/music-authoring-interface.md ("Host event ordering"). It only affects
+# docs/music-authoring.md (event ordering). It only affects
 # scores that carry effects or commands; an effect-free score keeps its original
 # per-channel append order (the clock `set_tempo` first at tick 0, then for each
 # note the volume/mod/note attack followed by the gate mute).
@@ -591,13 +586,11 @@ def lower(score: Score) -> Lowered:
 def availability() -> dict:
     return {
         "backend": {
-            "progmem": {"available": True},
-            "fx": {"available": False, "reason": FX_BACKEND_REASON},
+            "fx": {"available": True},
         },
         "capabilities": {
-            "inspect": {"available": False, "reason": VIEWER_REASON},
-            "render": {"available": False, "reason": RENDER_REASON},
-            "wav_preview": {"available": False, "reason": RENDER_REASON},
+            "validate": {"available": True},
+            "build": {"available": True},
         },
     }
 

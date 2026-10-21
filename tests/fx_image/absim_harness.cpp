@@ -3,9 +3,8 @@
  * emulator core (read-only Ardens source tree), with the FX data image loaded
  * (ATMlib2FX-hlh.10).
  *
- * Adapted, unchanged in behaviour, from the hlh.5 spike harness
- * research/fx/fx_compact_spike/trace/absim_compact_harness.cpp (that script is
- * read-only). It sets program_state.fxdata before reload_fx() so the emulated
+ * Adapted, unchanged in behaviour, from the retired hlh.5 spike harness.
+ * It sets program_state.fxdata before reload_fx() so the emulated
  * W25Q128 holds this lane's stream + bitmap image, then reports captured
  * USB-CDC serial bytes and the emulator stack high-water (min_stack). Host
  * diagnostic only; no AVR bytes are contributed.

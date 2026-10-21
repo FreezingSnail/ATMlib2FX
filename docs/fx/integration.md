@@ -6,7 +6,7 @@ service placement, the refill deadline, ring/admission limits, global loops
 (resident and streaming), underrun/error behaviour and the toolchain flags. The
 pinned contract is
 [`research/fx/fx-architecture-decision.md`](../../research/fx/fx-architecture-decision.md)
-(“hlh.6 review” plus the `hlh.8`, `hlh.9` and `hlh.16` addenda); the packer is
+(“hlh.6 review” plus the `hlh.8` and `hlh.16` addenda); the packer is
 [`tools/fx_image`](../../tools/fx_image/README.md), the reference converter is
 [`tools/fx_pack`](../../tools/fx_pack/README.md), and the authoring adapter is
 [`tools/music_authoring/fx_backend.py`](../../tools/music_authoring/fx_backend.py).
@@ -15,18 +15,16 @@ pinned contract is
 
 | Feature | Status | Build gate |
 | --- | --- | --- |
-| Finite `0xC0` music stream | supported | `ATM_HAS_FX_COMPACT=1` |
+| Finite `0xC0` music stream | supported | built in |
 | Global loops, region ≤ ring (`0xC1`, resident replay, no further fetch) | supported | `+ ATM_FX_COMPACT_LOOP=1` |
 | Global loops, region > ring (`0xC1`, streamed through the ring) | supported; region ≤ `ATM_FX_COMPACT_LOOP_MAX_REGION` (65535 B) | `+ ATM_FX_COMPACT_LOOP_STREAMING` (defaults to `ATM_FX_COMPACT_LOOP`) |
-| Pattern effects and live commands (arpeggio, note_cut, lfo, slide, glissando, noise_retrig; set/add tempo, set/add transposition, set_volume, set_mod, cue) | supported (same command bytecode as PROGMEM) | `ATM_HAS_FX_COMPACT=1` |
-| Pause / resume / atomic replacement | supported | `ATM_HAS_FX_COMPACT=1` |
-| Independent-tempo SFX | **not part of this path** (separate `ATM_FX_COMPACT_SFX` work) | — |
+| Pattern effects and live commands (arpeggio, note_cut, lfo, slide, glissando, noise_retrig; set/add tempo, set/add transposition, set_volume, set_mod, cue) | supported (original engine command bytecode) | built in |
+| Pause / resume / atomic replacement | supported | built in |
 
 Authoring (`tools/atm-music build --backend fx`): `--ring N` (power of two,
 5..256, default 32) sets the admission ring; `--streaming-loops` exports a loop
 region larger than the ring (up to 65535 B) with the same `0xC1` framing. The
-sketch must be built with the matching `ATM_FX_COMPACT_RING`. Nothing here is
-advertised for SFX.
+sketch must be built with the matching `ATM_FX_COMPACT_RING`.
 
 ## End-to-end flow
 
@@ -34,7 +32,7 @@ advertised for SFX.
 # 1. convert a legacy tracker score to the compact stream (tools/fx_pack)
 make -C tools/fx_pack
 build/fx-port/pack/fx_pack \
-  --song examples/arduino/songs/song01_sfx/song.h --symbol score \
+  --song tests/fx_pack/fixtures/song01_sfx/song.h --symbol score \
   --out build/fx-port/image/stream.bin --meta build/fx-port/image/stream_meta.json
 
 # 2. pack the stream plus a bitmap into the FX data image (tools/fx_image)
@@ -169,31 +167,26 @@ ring.
 
 ## Toolchain flags
 
-The default PROGMEM library build is **unchanged**; FX audio is opt-in per
-build:
+The compact decoder is the library's playback path. Build knobs:
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `ATM_HAS_FX_COMPACT` | `0` | Selects the compact FX music backend (removes the PROGMEM traversal path for that build). |
 | `ATM_FX_COMPACT_LOOP` | `0` | Enables `0xC1` loop streams (resident region ≤ ring). |
 | `ATM_FX_COMPACT_LOOP_STREAMING` | `= ATM_FX_COMPACT_LOOP` | Streams a loop region larger than the ring through the ring (`hlh.16`); set `0` to keep the pinned-only build. |
 | `ATM_FX_COMPACT_LOOP_MAX_REGION` | `65535` | Largest streamed loop region the decoder accepts. |
 | `ATM_FX_COMPACT_RING` | `32` | Music ring size in bytes (power of two, ≤ 256). |
 | `ATM_FX_COMPACT_CHUNK` | `16` | Largest foreground FX fetch per transaction. |
 | `ATM_FX_COMPACT_DIAG` | `0` | Adds counters and the serial report (diagnostic builds only). |
-| `ATM_FX_COMPACT_SFX` | `0` | Independent-tempo SFX overlay (separate work; not advertised here). |
 
-Set them on both C and C++ compilations. Example `arduino-cli` invocation:
+Example `arduino-cli` invocation:
 
 ```sh
 arduino-cli compile --fqbn arduboy-homemade:avr:arduboy-fx --library . \
   --build-path build/fx-port/image/avr-music_graphics \
   --output-dir build/fx-port/image/out-music_graphics \
-  --build-property "compiler.cpp.extra_flags=-DATM_HAS_FX_COMPACT=1 -DFX_IMAGE_USE_HEADER -I$PWD/build/fx-port/image" \
-  --build-property "compiler.c.extra_flags=-DATM_HAS_FX_COMPACT=1" \
+  --build-property "compiler.cpp.extra_flags=-DFX_IMAGE_USE_HEADER -I$PWD/build/fx-port/image" \
   examples/fx/music_graphics
 ```
 
-Shipping builds must never link both the legacy traversal path and an FX
-decoder. Measured example image (authored tempo, 52 fps, `song01_sfx`):
-program 8736 B, static SRAM 1376 B, decoded with zero underruns and zero error.
+Measured example image (authored tempo, 52 fps, `song01_sfx`):
+program 8796 B, static SRAM 1375 B, decoded with zero underruns and zero error.

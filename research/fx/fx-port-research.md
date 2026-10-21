@@ -1,5 +1,8 @@
 # FX song storage: research and proposed direction
 
+> Historical record. The spike code was removed; commands and paths below refer
+> to the retired research lane. Current contract: [FX music integration](../../docs/fx/integration.md).
+
 Research date: 2026-10-16. Tracking: `ATMlib2FX-9zf`; footprint priority
 clarification: `ATMlib2FX-dts`.
 
@@ -51,7 +54,7 @@ cost only when included; compare equivalent enabled features with the original.
 - Existing attempt: locally available `origin/FXport`,
   `c691dea85eb70545b65b64d324112ba0cdd01c09` (`WIP FX port`). The branch
   comparison used local refs; no remote refresh was performed.
-- [Score layout and commands](../../docs/library-reference.md), [synthesizer](../../src/atm_synth.c),
+- Score layout and commands (the inherited reference was retired), [synthesizer](../../src/atm_synth.c),
   [command interpreter](../../src/cmd_parse.c), [state](../../src/atm_synth.h),
   [timer/oscillator implementation](../../src/osc.c), and the song/SFX examples.
 - Reference game, found at `/Users/connorfranc/code/creaturegather/CreatureGathererFX`:

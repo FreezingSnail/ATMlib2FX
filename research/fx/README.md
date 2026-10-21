@@ -1,43 +1,45 @@
-# FX playback research
+# FX playback research archive
 
-The production FX storage ABI has not been selected. The owner priority is
-minimum SRAM and AVR program flash. Read the
-[architecture decision](fx-architecture-decision.md),
-[footprint results](fx-footprint-results.md), and
-[source research](fx-port-research.md) before continuing this work.
+The compact directly-consumed FX music stream (`atm_fx_compact_v1`) is the
+selected production backend. This directory preserves the architecture
+decisions, measurements and provenance from the FX port; it is not an active
+build lane.
 
-| Directory | Purpose |
+The spike sketches, converters, packers and emulator harnesses were removed
+after the maintained implementations landed. Historical commands in the
+documents below refer to those removed paths and cannot be rerun. Permanent
+fixtures used by the current test suite live under `tests/`:
+
+| Fixture | Current location |
 | --- | --- |
-| `footprint_baseline/` | Original engine measurement sketch, diagnostic sketch, trace harnesses and reference traces |
-| `fx_stream_spike/` | Retained 64-byte ring prototype and emulation/trace harnesses |
-| `fx_compact_spike/` | Compact 32-byte ring candidate and equivalence/format harnesses |
-| `tools/` | Experiment-specific converters, FX data builder and measurement scripts |
+| Host AVR PROGMEM shim | `tests/support/avr_shim/` |
+| Original-engine reference trace | removed with the PROGMEM runtime; see the git history |
+| Footprint measurement sketch | removed with the PROGMEM runtime; see the git history |
+| Compact loop-decoder trace | `tests/fx_jukebox/trace/` |
+| Reference FX image packer | `tests/fx_image/reference/fx_make_fxdata.c` |
 
-Reproduction entry points, from the repository root:
+Current implementation and contracts:
 
-```sh
-research/fx/tools/measure-footprint.sh
-research/fx/tools/build-fx-stream.sh
-research/fx/tools/build-fx-compact.sh
-```
+- [`src/atm_fx_compact.h`](../../src/atm_fx_compact.h) and
+  [`src/atm_fx_compact.c`](../../src/atm_fx_compact.c): device decoder.
+- [`docs/fx/integration.md`](../../docs/fx/integration.md): integration contract.
+- [`tools/fx_pack/`](../../tools/fx_pack/) and
+  [`tools/fx_image/`](../../tools/fx_image/): maintained stream converter and
+  data-image packer.
+- [`tools/music_authoring/fx_backend.py`](../../tools/music_authoring/fx_backend.py)
+  and [`fx_jukebox.py`](../../tools/music_authoring/fx_jukebox.py): authoring
+  adapter and multi-song image generator.
+- [`examples/arduino/jukebox_fx/`](../../examples/arduino/jukebox_fx/) and
+  [`examples/fx/music_graphics/`](../../examples/fx/music_graphics/): consumers.
 
-These scripts require the existing local Arduino/AVR toolchain; emulator scripts
-also require an existing local Ardens build. They write to `build/fx-port/`.
-The compile-gated candidate backends remain in `src/atm_fx_{stream,compact}.{c,h}`
-because they are integrated with the engine for reproduction. Their presence
-does not mean a production format has been accepted.
+## Documents
 
-## Relocated paths
-
-| Former location | Current location |
+| Document | Contents |
 | --- | --- |
-| `tools/build-fx-*.sh`, `tools/measure-footprint.sh`, `tools/fx_*.c`, `tools/fx_compact_spike/` | `research/fx/tools/` |
-| `examples/footprint_baseline/` | `research/fx/footprint_baseline/` |
-| `examples/fx_stream_spike/` | `research/fx/fx_stream_spike/` |
-| `examples/fx_compact_spike/` | `research/fx/fx_compact_spike/` |
-| `docs/fx-*.md` | `research/fx/fx-*.md` |
+| [`fx-architecture-decision.md`](fx-architecture-decision.md) | Pinned framing, ownership, loops, pause/replacement and admission decisions |
+| [`fx-footprint-results.md`](fx-footprint-results.md) | Original engine and candidate decoder flash/SRAM/stack measurements |
+| [`fx-port-research.md`](fx-port-research.md) | Storage and playback research notes |
+| [`fx-mixer-gating-results.md`](fx-mixer-gating-results.md) | Compile-time mixer gating spike and go recommendation |
 
-Current reproduction commands use the new paths. Captured files in `build/`,
-published hash tables, and unchanged engine comments may refer to former paths.
-The cleanup changed paths/comments in research utilities; historical source
-hashes still identify the original measurement inputs. No measurements were rerun.
+These files are historical records. Their captured paths, hashes and build
+commands describe the state at measurement time and have not been rewritten.

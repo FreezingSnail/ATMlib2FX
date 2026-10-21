@@ -2,11 +2,10 @@
 
 Maintained packer (`ATMlib2FX-hlh.10`, multi-stream mode `ATMlib2FX-hlh.13`)
 for the pinned finite-v1 compact FX music stream selected by `ATMlib2FX-hlh.6`.
-It replaces the fixed-fixture spike packer
-`research/fx/tools/fx_make_fxdata.c` (read-only reference): instead of a
-hard-coded test bitmap it takes a **stream binary plus a real bitmap/image
-input**, owns the layout and data-page placement, does the 24-bit extent
-arithmetic and emits metadata (and optionally a C header).
+It replaces the retired fixed-fixture spike packer; instead of a hard-coded
+test bitmap it takes a **stream binary plus a real bitmap/image input**, owns
+the layout and data-page placement, does the 24-bit extent arithmetic and emits
+metadata (and optionally a C header).
 
 Two modes share one binary:
 
@@ -17,9 +16,9 @@ Two modes share one binary:
 
 Contract and framing live in
 [`research/fx/fx-architecture-decision.md`](../../research/fx/fx-architecture-decision.md)
-(“hlh.6 review”, item 4). This tool emits **finite (non-looping, no-SFX) music**
-images only; per-stream loop flags are reported for loop streams
-(`ATMlib2FX-hlh.8`) but the tool does not interpret their contents.
+(“hlh.6 review”, item 4). Packing is content-agnostic: per-stream loop flags are
+reported for `0xC1` loop streams (`ATMlib2FX-hlh.8`), and the packer does not
+interpret their contents. Independent-tempo SFX is not implemented.
 
 ## Build
 
@@ -229,7 +228,7 @@ rejections. Evidence lands under `build/fx-port/image/` (single) and
 
 ## Not covered
 
-Global loops (owned by `ATMlib2FX-hlh.8`, not supported by the stream), SFX,
-the general converter input matrix (`tools/fx_pack`), and game fit
+Loop record interpretation beyond the `0xC1` flag, SFX, the general converter
+input matrix (`tools/fx_pack`), and game fit
 (`ATMlib2FX-hlh.11`). See [`docs/fx/integration.md`](../../docs/fx/integration.md)
 for the user-facing integration contract.

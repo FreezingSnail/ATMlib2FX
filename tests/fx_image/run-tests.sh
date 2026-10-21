@@ -7,7 +7,7 @@
 # single-page 24-bit extents, compose/header), then does shell end-to-end checks:
 #
 #   * fixture image is byte-identical to the read-only reference packer
-#     research/fx/tools/fx_make_fxdata.c (same layout and data page);
+#     tests/fx_image/reference/fx_make_fxdata.c (same layout and data page);
 #   * the example PBM packs with the expected metadata;
 #   * the data page is added exactly once (abs == page * 256 + relative);
 #   * raw and raw-with-header bitmap inputs agree with the same pixels;
@@ -25,7 +25,7 @@ cd "$REPO_ROOT"
 
 OUT="build/fx-port/image"
 CC="${CC:-cc}"
-REF_PACKER="research/fx/tools/fx_make_fxdata.c"
+REF_PACKER="tests/fx_image/reference/fx_make_fxdata.c"
 PBM="examples/fx/art/note_32x16.pbm"
 
 mkdir -p "$OUT"

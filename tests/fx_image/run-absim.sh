@@ -3,9 +3,8 @@
 # run-absim.sh - FX-aware absim run for a finite-v1 compact FX example image
 # (ATMlib2FX-hlh.10).
 #
-# Adapted from the hlh.5 spike runner
-# research/fx/fx_compact_spike/trace/run-absim.sh (read-only; not edited). It
-# builds tests/fx_image/absim_harness.cpp against the local Ardens absim core
+# Adapted from the retired hlh.5 spike runner. It builds
+# tests/fx_image/absim_harness.cpp against the local Ardens absim core
 # (read-only; no Ardens edits, no git commands), loads the generated FX data
 # image, and runs one ELF. It reports the captured USB-CDC diagnostic line and
 # the emulator stack high-water, and fails if the build reports any underrun.

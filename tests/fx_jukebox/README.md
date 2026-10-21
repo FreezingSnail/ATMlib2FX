@@ -35,21 +35,20 @@ Reads only committed/generated artifacts (no toolchain) and checks:
   `LOOP_NOT_EXPORTED`.
 
 It writes `static-report.json`, `evidence-sha256.txt` and a `capacity.md` table
-(stream bytes vs the PROGMEM jukebox asset bytes, sketch flash/SRAM, Ardens
-launch line). Exit status is non-zero if any check fails.
+(stream bytes, loop regions, sketch flash/SRAM and the Ardens launch line). Exit status is non-zero if any check fails.
 
 ## `run-absim-verify.sh`
 
 Uses the real `examples/arduino/jukebox_fx` sketch (its `JUKEBOX_FX_START_SONG`
 and `FX_REPORT_FRAME` hooks) so the evidence is on the shipped consumer:
 
-1. **Host decoder trace** — `research/fx/fx_compact_spike/loops/compact_trace.c`
+1. **Host decoder trace** — `tests/fx_jukebox/trace/compact_trace.c`
    (the device streaming decoder on the host, ring 64) runs each stream for
    intro + two full loop cycles. It must show zero underruns, zero error, an
    active player, and consecutive loop cycles byte-identical after dropping the
    traversal-only columns (the wrap repeats on the pinned period).
 2. **absim device run** — the sketch is compiled with the documented FX flags
-   (`ATM_HAS_FX_COMPACT=1`, `ATM_FX_COMPACT_LOOP=1`, `ATM_FX_COMPACT_RING=64`,
+   (`ATM_FX_COMPACT_LOOP=1`, `ATM_FX_COMPACT_RING=64`,
    `ATM_FX_COMPACT_DIAG=1`) and started on each song, then run on the packed
    image past intro + two full cycles. The one-shot `FXDIAG` line must show
    `underruns=0`, `error=0`, `stop_tick=0`, and a tick count beyond two cycles.

@@ -47,20 +47,18 @@ and using two-tick gaps gave it a more continuous lead. A 40 ms gap is an exampl
 for that cue, not a rule for fanfares, plucked parts or percussion. Choose gates
 by role: a held melody, short accompaniment and sparse noise can coexist.
 
-If the score already describes the intended sound, examine the original-engine
-trace and matching WAV. If only browser playback fails, investigate transport,
-startup offsets, stale media, and loop bounds. A source edit cannot establish
-that a browser fault was repaired.
+If the score already describes the intended sound, validate it and build the
+compact FX stream. A source edit cannot establish that a device or integration
+fault was repaired; check the stream diagnostics and the sketch service path.
 
 ## Engine effects and automation
 
 Optional per-pattern `effects` and `commands` keys drive the engine's own effect
 state and live commands. Both are additive: omitting them leaves an older score
 unchanged. Read the exact accepted fields, byte mapping and diagnostics in
-[the authoring interface](../../../music-authoring-interface.md#effect-windows-and-live-commands),
-and validate every score before trusting a render. Effects and commands are
-emitted by the PROGMEM backend and by the compact FX adapter (which encodes the
-same command bytecode), so an effect passage is no longer PROGMEM-only.
+[the authoring guide](../../../music-authoring.md), and validate every score
+before trusting an export. The compact FX adapter encodes the same engine
+command bytecode.
 
 Tick math first. Effect timing is counted in ticks, so convert from the clock
 before choosing a `period`. At 100 Hz one tick is 10 ms, so `period: 3` is a

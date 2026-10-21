@@ -29,7 +29,7 @@ if _TOOLS not in sys.path:
 from music_authoring import fx_backend as fx  # noqa: E402
 from music_authoring.cli import main as cli_main  # noqa: E402
 from music_authoring.lower import lower  # noqa: E402
-from music_authoring.progmem_backend import capability_summary  # noqa: E402
+from music_authoring.fx_backend import capability_summary  # noqa: E402
 from music_authoring.score import parse_json_bytes  # noqa: E402
 from music_authoring.validate import validate_document  # noqa: E402
 
@@ -624,7 +624,7 @@ class GapVarintHarnessTests(unittest.TestCase):
                 "-O1",
                 "-w",
                 "-I",
-                os.path.join(REPO_ROOT, "tools/music_authoring/preview/avr_shim"),
+                os.path.join(REPO_ROOT, "tests/support/avr_shim"),
                 "-I",
                 os.path.join(REPO_ROOT, "src"),
                 os.path.join(REPO_ROOT, "tests/music_authoring/fx/compact_trace_main.c"),
@@ -766,7 +766,7 @@ class AdmissionTests(unittest.TestCase):
 class EffectCommandSupportTests(unittest.TestCase):
     """Effects and live commands encode to compact records (ATMlib2FX-hlh.12).
 
-    The compact decoder applies the same command bytecode as PROGMEM
+    The compact decoder applies the original engine command bytecode
     (``cmd_parse.apply_cmd``), so every family lowering emits is admitted and
     appears in the stream as a record group byte. Nothing is silently dropped.
     """
@@ -1161,15 +1161,6 @@ class CliTests(unittest.TestCase):
         for name in ("stream.bin", "stream.h", "review.json", "report.json"):
             self.assertTrue(os.path.exists(os.path.join(out, name)), name)
 
-    def test_build_progmem_default_unchanged(self):
-        out = os.path.join(LANE, "cli-progmem")
-        code, _payload = self._run(
-            ["build", BASIC_REL, "--backend", "progmem", "--out", out, "--json"]
-        )
-        self.assertEqual(code, 0)
-        self.assertTrue(os.path.exists(os.path.join(out, "score.bin")))
-        self.assertFalse(os.path.exists(os.path.join(out, "stream.bin")))
-
     def test_gap_extent_cli_reports_source_not_tool_error(self):
         # Regression: the oversized-gap build used to exit 3 TOOL_ERROR with an
         # empty path; it must exit 2 with a source-pointed admission diagnostic.
@@ -1200,34 +1191,15 @@ class CliTests(unittest.TestCase):
             "inadmissible source must not produce assets",
         )
 
-    def test_validate_and_render_reject_fx(self):
+    def test_validate_accepts_fx_and_rejects_removed_backends(self):
         code, payload = self._run(["validate", BASIC_REL, "--backend", "fx", "--json"])
+        self.assertEqual(code, 0)
+        self.assertTrue(json.loads(payload)["ok"])
+        code, payload = self._run(
+            ["validate", BASIC_REL, "--backend", "progmem", "--json"]
+        )
         self.assertEqual(code, 2)
         self.assertEqual(json.loads(payload)["diagnostics"][0]["code"], "BACKEND_UNAVAILABLE")
-        code, _payload = self._run(
-            ["render", BASIC_REL, "--backend", "fx", "--out", LANE, "--json"]
-        )
-        self.assertEqual(code, 2)
-
-
-class PlaybackEquivalenceTests(unittest.TestCase):
-    """Host original-engine vs device-decoder trace equivalence (slow, real C)."""
-
-    @unittest.skipUnless(shutil.which("cc") or shutil.which("clang"), "no host C compiler")
-    def test_equivalence_lane_matches(self):
-        script = os.path.join(REPO_ROOT, "tests/music_authoring/fx/run-fx-trace.sh")
-        proc = subprocess.run(
-            ["bash", script],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("equivalence: MATCH", proc.stdout)
-        summary = os.path.join(LANE, "lane", "equivalence.txt")
-        with open(summary, "r", encoding="utf-8") as handle:
-            text = handle.read()
-        self.assertEqual(text.count("result=MATCH"), 2)
 
 
 if __name__ == "__main__":

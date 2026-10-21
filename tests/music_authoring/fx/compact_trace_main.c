@@ -3,14 +3,13 @@
  * (ATMlib2FX-3ii.3, stream framing selected by ATMlib2FX-hlh.6).
  *
  * Drives the *device* compact decoder (src/atm_synth.c compiled with
- * ATM_HAS_FX_COMPACT=1, which #includes src/atm_fx_compact.c) on the host and
- * emits the same tick CSV schema as tools/music_authoring/preview/trace_main.c
- * (the original PROGMEM engine trace), so the two runs can be diffed for the
- * same authored score.  The effect/command core is the unmodified library, so
+ * which #includes src/atm_fx_compact.c) on the host and
+ * emits a deterministic tick CSV for the authored score. The effect/command
+ * core is the unmodified library, so
  * the only thing under test is the generated stream, its framing and the refill
  * ring.
  *
- * The osc.c timer layer is substituted exactly as in the PROGMEM trace harness
+ * The osc.c timer layer is substituted with a host stub
  * (2000 Hz base, ISR down-counter semantics, floor-quantized tick rates).  This
  * is a host diagnostic build: it contributes no AVR bytes.
  *
@@ -21,7 +20,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define ATM_HAS_FX_COMPACT (1)
 #define ATM_FX_COMPACT_DIAG (1)
 #include "atm_synth.c"
 

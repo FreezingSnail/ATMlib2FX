@@ -1,9 +1,8 @@
 /*
  * fx_encode.c - see fx_encode.h.
  *
- * The traversal logic is ported from the retained hlh.5 spike converter
- * (research/fx/tools/fx_compact_spike/fx_compile_compact.c) so the fixture
- * stream stays byte-identical, with these production additions:
+ * The traversal logic is ported from the retired hlh.5 spike converter so the
+ * fixture stream stays byte-identical, with these production additions:
  *   - reusable, file-agnostic API (no compiled-in song);
  *   - source-event admission diagnostics for every hard failure;
  *   - corrected long-delay scheduling (original library adds one tick);

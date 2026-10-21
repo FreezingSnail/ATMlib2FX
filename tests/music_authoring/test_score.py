@@ -1,7 +1,7 @@
 """Validation-contract tests for the v1 score format (ATMlib2FX-3ii.1).
 
 These tests are permanent: they cover the package and assert the strict
-source contract from docs/music-authoring-interface.md, including stable
+source contract from docs/music-authoring.md, including stable
 diagnostic codes and exact RFC 6901 JSON Pointers.
 """
 

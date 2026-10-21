@@ -1,15 +1,15 @@
 /*
- * atm_fx_compact.h - compact, directly consumed FX music stream
- * (ATMlib2FX-hlh.5), with pause/replacement semantics and an independent-tempo
- * SFX overlay (ATMlib2FX-hlh.9).
+ * atm_fx_compact.h - compact, directly consumed FX music stream.
+ * Pause/replacement semantics and global-loop support are included.
  *
- * Experimental spike candidate, not a production ABI. A single sequential,
+ * Selected compact FX music format (ATMlib2FX-hlh.6). A single sequential,
  * complete-record byte stream is read from FX by foreground code into a small
  * SRAM ring. Each record is a "due pass": the commands that run at the current
  * music tick for a bitmap of channels, plus one shared gap field giving the
  * number of effect-only ticks until the next pass. Per-channel delay bytecode
- * and the runtime pattern/return stacks are removed (see tools/fx_compact_spike/
- * fx_compile_compact.c); live effect/oscillator state is unchanged.
+ * and the runtime pattern/return stacks are removed; live effect/oscillator
+ * state is unchanged. The contract is pinned in
+ * research/fx/fx-architecture-decision.md and docs/fx/integration.md.
  *
  * The timer consumer preflights the whole record (length + structure) before
  * mutating any effect or channel state, applies it directly from the ring, and
@@ -23,9 +23,8 @@
  *
  * The library owns: the music ring + decoder state (`atm_fx_compact_state`),
  * the four music channel states (`channels[]`) and their oscillator params
- * (`osc_params_array[]`), and (when `ATM_FX_COMPACT_SFX`) one borrowed voice for
- * the SFX overlay. The caller owns the FX data page (`FX::begin`), the compact
- * byte streams (their lifetime must extend from `play`/`play_sfx` to completion
+ * (`osc_params_array[]`). The caller owns the FX data page (`FX::begin`), the
+ * compact byte stream (its lifetime must extend from `play` to completion
  * or the matching `stop`) and the foreground main-loop service call.
  *
  * `play` (replacement) is atomic with respect to the timer: it disables the
@@ -35,12 +34,6 @@
  * `pause` preserves ring position and all live state while muting, and
  * `resume` restores the saved voice volumes and re-arms.
  *
- * SFX (`ATM_FX_COMPACT_SFX=1`) is a second, independent compact stream stored in
- * PROGMEM and read by the timer directly (no FX SPI, no second ring, no
- * mandatory second queue). It runs on its own tempo (callback 1), borrows one
- * music channel (save + zero + redirect the music channel's effects into the
- * saved shadow), and on natural stop, explicit stop, or replacement restores
- * the current music voice from that shadow.
  */
 #ifndef ATM_FX_COMPACT_H
 #define ATM_FX_COMPACT_H
@@ -57,12 +50,6 @@
 /* Diagnostics (counters + trace). Off in production-size builds. */
 #ifndef ATM_FX_COMPACT_DIAG
 #define ATM_FX_COMPACT_DIAG (0)
-#endif
-
-/* Independent-tempo SFX overlay (ATMlib2FX-hlh.9). Off pays nothing; only
- * enabled builds carry the SFX state, reader code and PROGMEM asset reader. */
-#ifndef ATM_FX_COMPACT_SFX
-#define ATM_FX_COMPACT_SFX (0)
 #endif
 
 /* Global-loop streams (ATMlib2FX-hlh.8), magic 0xC1. Off by default so the
@@ -138,18 +125,6 @@ struct atm_fx_compact_state {
 	                         * timer never sees END (ATMlib2FX-hlh.16) */
 #endif
 #endif
-#if ATM_FX_COMPACT_SFX
-	/* --- independent-tempo SFX overlay (PROGMEM compact stream) --- */
-	const uint8_t *sfx_ptr;   /* PROGMEM base of the SFX stream  */
-	uint32_t sfx_end;         /* descriptor length in bytes      */
-	uint32_t sfx_pos;         /* next SFX byte (from sfx_ptr)    */
-	uint16_t sfx_gap;         /* effect-only ticks until next SFX pass */
-	uint8_t sfx_active;
-	uint8_t sfx_ch;           /* borrowed music channel          */
-	struct osc_params sfx_save;            /* borrowed music voice */
-	struct atm_synth_state sfx_track;      /* SFX player state     */
-	struct atm_channel_state sfx_channel;  /* SFX channel state    */
-#endif
 #if ATM_FX_COMPACT_DIAG
 	uint16_t ticks;
 	uint16_t underruns;
@@ -160,15 +135,6 @@ struct atm_fx_compact_state {
 	uint8_t max_record;    /* largest record consumed            */
 	uint8_t window;        /* bytes consumed since last service  */
 	uint8_t max_window;    /* largest such window                */
-#if ATM_FX_COMPACT_SFX
-	uint16_t sfx_ticks;       /* SFX callback count              */
-	uint16_t sfx_start_tick;  /* music tick at SFX start         */
-	uint16_t sfx_stop_tick;   /* music tick at SFX stop          */
-	uint16_t sfx_last_inc;    /* SFX voice phase_increment (last SFX tick) */
-	uint16_t sfx_restore_inc; /* borrowed voice phase_increment after restore */
-	uint8_t sfx_borrow;       /* borrowed channel index          */
-	uint8_t sfx_restore_ok;   /* 1 after a restore completed     */
-#endif
 #endif
 };
 
@@ -186,8 +152,7 @@ void atm_fx_compact_play(uint32_t offset, uint32_t length);
 /* Foreground refill. Call when no FX/OLED transaction is in progress. */
 void atm_fx_compact_service(void);
 
-/* Stop the music player, mute the owned voices and unregister (also stops any
- * active SFX overlay, restoring its borrowed voice). */
+/* Stop the music player, mute the owned voices and unregister. */
 void atm_fx_compact_stop(void);
 
 /* True while the music player is armed (a paused player is still active). */
@@ -200,19 +165,6 @@ void atm_fx_compact_pause(void);
 void atm_fx_compact_resume(void);
 uint8_t atm_fx_compact_is_paused(void);
 
-#if ATM_FX_COMPACT_SFX
-/* Play a compact SFX stream stored in PROGMEM (`length` bytes, magic + records
- * + END), borrowing `channel_index` from the music player at independent tempo.
- * Stops/replaces any current SFX first (restoring its borrowed voice) and
- * saves, zeroes and redirects the named music channel. Returns nothing; check
- * is_sfx_active(). */
-void atm_fx_compact_play_sfx(uint8_t channel_index, const uint8_t *stream, uint32_t length);
-
-/* Stop the SFX overlay and restore the borrowed music voice. Safe when idle. */
-void atm_fx_compact_stop_sfx(void);
-
-uint8_t atm_fx_compact_is_sfx_active(void);
-#endif /* ATM_FX_COMPACT_SFX */
 
 #ifdef __cplusplus
 }

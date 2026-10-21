@@ -39,7 +39,7 @@ HOST_LIMITS = {
 
 # Additive v1 effect-window kinds (pattern-level optional `effects`). The engine
 # state each kind programs lives in src/atm_synth.h; the exact operand byte
-# mapping is documented in docs/music-authoring-interface.md.
+# mapping is documented in docs/music-authoring.md.
 EFFECT_TYPES = (
     "arpeggio",
     "note_cut",
@@ -102,20 +102,6 @@ SEMITONES = {
     "A#": 10,
     "B": 11,
 }
-
-FX_BACKEND_REASON = (
-    "FX playback contract is pending the architecture decision in "
-    "ATMlib2FX-hlh.2; FX export is owned by ATMlib2FX-3ii.3."
-)
-RENDER_REASON = (
-    "No WAV renderer is implemented in this task; bounded WAV preview and "
-    "playback evidence are owned by ATMlib2FX-3ii.2."
-)
-VIEWER_REASON = (
-    "Offline HTML/JS track review is owned by ATMlib2FX-3ii.6; this task "
-    "publishes the canonical review payload only."
-)
-
 
 class ScoreError(Exception):
     """Raised when validated data cannot be lowered (internal safeguard)."""
@@ -303,7 +289,7 @@ class EffectWindow:
     ``at`` is the inclusive first tick, ``until`` the exclusive end tick
     (defaults to the pattern length). Only the fields understood by ``kind`` are
     set; the rest stay ``None``. The byte encoding for each kind is pinned in
-    docs/music-authoring-interface.md.
+    docs/music-authoring.md.
 
     Field use by ``kind``:
 

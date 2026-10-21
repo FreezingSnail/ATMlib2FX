@@ -1,35 +1,33 @@
 # Packaged host tools
 
-Start with the [music authoring guide](../docs/music-authoring-guide.md) for LLM
-or human composition. Run commands from the repository root. Python tooling uses
-the standard library; AVR audio rendering additionally needs the local Arduino
-toolchain and an existing Ardens build (see the guide).
+Start with the [music authoring guide](../docs/music-authoring.md). Run commands
+from the repository root. Python tooling uses the standard library; device checks
+need the local Arduino toolchain and an existing Ardens build.
 
 | Entry point | Purpose |
 | --- | --- |
-| `tools/atm-music capabilities --json` | Describe the score contract and backend |
-| `tools/atm-music validate SONG.json --backend progmem --json` | Check a song and report JSON diagnostics |
-| `tools/atm-music build SONG.json --backend progmem --out build/music-authoring/export --json` | Export PROGMEM assets |
-| `tools/atm-music render SONG.json --backend progmem --seconds 12 --out build/music-authoring/preview --json` | Capture real emulated AVR audio |
-| `tools/atm-music inspect SONG.json --audio-preview PREVIEW --out build/music-authoring/review.html --json` | Generate an offline track viewer |
-| `python3 tools/music_authoring/library_player.py --catalog examples/music_authoring/catalog.json --out examples/music_authoring/player.html --json` | Bundle the example library into one offline player |
+| `tools/atm-music capabilities --json` | Describe the score contract and FX backend |
+| `tools/atm-music validate SONG.json --json` | Check a song and report diagnostics |
+| `tools/atm-music build SONG.json --backend fx --out build/music-authoring/export --json` | Export a compact FX stream |
+| `tools/atm-music build SONG.json --backend fx --ring 64 --streaming-loops --out build/music-authoring/fx --json` | Export a configurable-ring streaming-loop stream |
+| `python3 tools/music_authoring/fx_jukebox.py --out-dir build/fx-jukebox --header examples/arduino/jukebox_fx/jukebox_fx_songs.h --ring 64 --streaming-loops` | Rebuild the 21-song jukebox image and index header |
+
+`tools/fx_pack` converts legacy tracker score headers to compact streams;
+`tools/fx_image` packs streams and bitmaps into an FX data image.
 
 CLI stdout is a JSON document; progress goes to stderr. Exit codes: `0` success,
-`2` invalid input or unsupported capability, `3` tool failure. Production FX
-export is unavailable.
+`2` invalid input or unsupported capability, `3` tool failure. The FX backend
+exports finite streams, effects/commands and resident or streaming loops. SFX is
+not offered.
 
 ## Package contents
 
-- `music_authoring/*.py`: validation, lowering, PROGMEM export, rendering,
-  inspection, and library bundling.
-- `music_authoring/preview/`: renderer runtime inputs (AVR sketch, emulator
-  capture harness, engine tick trace, and host AVR shim).
-- `music_authoring/viewer/`: the single-song viewer template, styles, timeline,
-  and Raw/Piezo audio routing.
-- `music_authoring/library_player/`: selector shell assets for the library player.
+- `music_authoring/*.py`: validation, lowering, command encoding, compact FX
+  export and jukebox generation.
+- `fx_pack/`: legacy score to compact stream converter.
+- `fx_image/`: FX data-image packer.
 
-Song sources and matching preview WAV/report pairs live together in
-[`examples/music_authoring/`](../examples/music_authoring/). Developer checks and
-goldens live in [`tests/`](../tests/); FX experiments and their reproduction
-utilities live in [`research/fx/`](../research/fx/). Write intermediate outputs
+Song sources live in [`examples/music_authoring/`](../examples/music_authoring/).
+Developer checks and goldens live in [`tests/`](../tests/); archived FX
+measurements live in [`research/fx/`](../research/fx/). Write intermediate outputs
 under the ignored `build/` directory.

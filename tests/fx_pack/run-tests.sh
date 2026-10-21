@@ -25,9 +25,9 @@ cd "$REPO_ROOT"
 
 OUT="build/fx-port/pack"
 CC="${CC:-cc}"
-SHIM="research/fx/fx_stream_spike/trace/avr_shim"
-SONG_SFX="examples/arduino/songs/song01_sfx/song.h"
-SONG_01="examples/arduino/songs/song01/song.h"
+SHIM="tests/support/avr_shim"
+SONG_SFX="tests/fx_pack/fixtures/song01_sfx/song.h"
+SONG_01="tests/fx_pack/fixtures/song01/song.h"
 WANT_AUTHORED="0e8432ace6fd5d93421f07bd584ebf1ee27d00a60bc1f912a119c872f94b0990"
 WANT_T255="b7702512b218df5d614bcd1406116817720b4a5ff983dae443c5bde0f6e88249"
 

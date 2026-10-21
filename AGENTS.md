@@ -3,8 +3,8 @@
 ## Repository boundaries
 
 Keep `tools/` limited to maintained host CLI/UI code and required runtime assets.
-Keep authored music and its preview media in `examples/`, developer checks and
-goldens in `tests/`, and spikes, measurement utilities and results in `research/`.
+Keep authored music sources in `examples/`, developer checks and goldens in
+`tests/`, and archived measurements and captured evidence in `research/`.
 Write intermediate generated outputs under `build/`. See
 `docs/repository-layout.md` for entry points and relocated paths. Preserve captured
 evidence and existing provenance when reorganizing files.
@@ -13,7 +13,7 @@ evidence and existing provenance when reorganizing files.
 
 For composing, reviewing, or revising tracks with the local authoring tools,
 use [the atm-music skill](docs/skills/atm-music/SKILL.md). It covers musical
-guidance, port-specific capabilities, tempo, loops, and matching previews.
+guidance, port-specific capabilities, tempo, loops and compact FX export.
 Its repository copy lives under `docs/skills/` because this environment protects
 `.agents/` from writes; follow the skill by reading that entry point directly.
 

@@ -1,3 +1,0 @@
-# reference trace checksums (sha256), ATMlib2FX-hlh.1
-music     87e55846b3abaf214a8cb68355a8db52a431e7b75ae7b0ee0b7b7c3447e5d01d
-music_sfx 10ec84de82eb11d68bd7ccd56f328f9414c2eb44e23b80b4b9e20506f184083f

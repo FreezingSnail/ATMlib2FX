@@ -27,7 +27,6 @@
 #define ATM_FX_COMPACT_RING (32)
 #endif
 
-#define ATM_HAS_FX_COMPACT (1)
 #define ATM_FX_COMPACT_LOOP (1)
 #define ATM_FX_COMPACT_DIAG (1)
 #include "atm_synth.c"
